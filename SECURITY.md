@@ -12,7 +12,7 @@ If you discover a security vulnerability in `presidio-hardened-angellist`,
 please report it responsibly:
 
 1. **Do NOT open a public GitHub issue.**
-2. Email **security@presidio.dev** with:
+2. Email **security@presidio-group.eu** with:
    - A description of the vulnerability
    - Steps to reproduce
    - Potential impact assessment

@@ -32,7 +32,6 @@ from threading import Lock
 from typing import Any
 
 import requests
-import urllib3
 from requests.adapters import HTTPAdapter
 
 __all__ = [
@@ -77,15 +76,13 @@ class SecretRedactor:
 
     def redact_headers(self, headers: dict[str, str]) -> dict[str, str]:
         sensitive = {"authorization", "x-access-token", "x-api-key"}
-        return {
-            k: (self.placeholder if k.lower() in sensitive else v)
-            for k, v in headers.items()
-        }
+        return {k: (self.placeholder if k.lower() in sensitive else v) for k, v in headers.items()}
 
 
 # ---------------------------------------------------------------------------
 # Rate limiter
 # ---------------------------------------------------------------------------
+
 
 class RateLimiter:
     """Token-bucket rate limiter, per host."""
@@ -108,12 +105,12 @@ class RateLimiter:
 # TLS hardening adapter
 # ---------------------------------------------------------------------------
 
+
 class _TLSHardenedAdapter(HTTPAdapter):
     """Enforce TLS 1.2+, strong ciphers, and cert verification."""
 
     _CIPHERS = (
-        "ECDH+AESGCM:ECDH+CHACHA20:DH+AESGCM:DH+CHACHA20"
-        ":!aNULL:!MD5:!RC4:!DSS:!3DES:!EXPORT"
+        "ECDH+AESGCM:ECDH+CHACHA20:DH+AESGCM:DH+CHACHA20:!aNULL:!MD5:!RC4:!DSS:!3DES:!EXPORT"
     )
 
     def init_poolmanager(self, *args: Any, **kwargs: Any) -> None:
@@ -129,6 +126,7 @@ class _TLSHardenedAdapter(HTTPAdapter):
 # ---------------------------------------------------------------------------
 # HardenedSession
 # ---------------------------------------------------------------------------
+
 
 class HardenedSession(requests.Session):
     """
@@ -156,6 +154,7 @@ class HardenedSession(requests.Session):
 
         # Rate limit per host
         from urllib.parse import urlparse
+
         host = urlparse(url).netloc
         self._rate_limiter.wait(host)
 
@@ -177,8 +176,10 @@ class HardenedSession(requests.Session):
 # Exceptions
 # ---------------------------------------------------------------------------
 
+
 class AngelListError(Exception):
     """Base exception for all AngelList API errors."""
+
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
         self.status_code = status_code
@@ -195,6 +196,7 @@ class AuthError(AngelListError):
 # ---------------------------------------------------------------------------
 # AngelList Startup / Funding Data API client
 # ---------------------------------------------------------------------------
+
 
 class AngelListClient:
     """
@@ -234,11 +236,13 @@ class AngelListClient:
             redactor=self._redactor,
             rate_limiter=rate_limiter or RateLimiter(),
         )
-        self._session.headers.update({
-            "Authorization": f"Bearer {self._api_key}",
-            "Accept": "application/json",
-            "User-Agent": f"presidio-hardened-angellist/{__version__}",
-        })
+        self._session.headers.update(
+            {
+                "Authorization": f"Bearer {self._api_key}",
+                "Accept": "application/json",
+                "User-Agent": f"presidio-hardened-angellist/{__version__}",
+            }
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -255,7 +259,9 @@ class AngelListClient:
                 last_exc = exc
                 _log.warning(
                     "presidio_angellist: connection error on attempt %d/%d — %s",
-                    attempt, self._max_retries, exc,
+                    attempt,
+                    self._max_retries,
+                    exc,
                 )
                 time.sleep(self._retry_backoff * (2 ** (attempt - 1)))
                 continue
@@ -263,7 +269,8 @@ class AngelListClient:
             if resp.status_code == 429:
                 retry_after = float(resp.headers.get("Retry-After", self._retry_backoff * attempt))
                 _log.warning(
-                    "presidio_angellist: rate limited by AngelList API — waiting %.1fs", retry_after
+                    "presidio_angellist: rate limited by AngelList API — waiting %.1fs",
+                    retry_after,
                 )
                 time.sleep(retry_after)
                 continue

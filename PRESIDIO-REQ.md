@@ -99,8 +99,38 @@ security defaults with no changes to their calling code.
 | Version | Planned features |
 |---|---|
 | **0.1.0** | Initial scaffold — see above |
-| **0.2.0** | `NotFoundError`, certificate pinning option, optional `truststore` integration, async client (`AsyncAngelListClient`) |
-| **0.3.0** | Response schema validation (Pydantic models), pagination helpers, CLI entrypoint |
+| **0.2.0** | Test coverage to 90%+, `NotFoundError`, configurable timeout, `AsyncAngelListClient` (httpx), certificate pinning, PyPI publish workflow |
+| **0.3.0** | Pydantic response models (opt-in via `validate=True`), pagination generators (`iter_startups`, `iter_users`), CLI entrypoint (JSON default + `--format table`), optional `truststore` integration |
 
-Full deliberation details for future versions will be appended to this file as
-scoping decisions are made.
+---
+
+### v0.2.0 — Deliberation Log (2026-04-11)
+
+**Scope decisions:**
+
+- **Test coverage first** — current coverage is ~60-70% despite 90% threshold in config; 5 of 8
+  endpoints lack tests entirely. No new features ship until the threshold is genuinely met.
+- **`NotFoundError(AngelListError)`** added for HTTP 404; previously fell through as generic
+  `AngelListError`. Consistent `status_code` propagation across all raise sites.
+- **Configurable timeout** exposed as `timeout: float = 30.0` on `AngelListClient.__init__`;
+  currently hardcoded at 30 s inside `_get()`. Zero breaking change.
+- **`AsyncAngelListClient`** backed by `httpx.AsyncClient` (new dependency: `httpx`). Mirrors all
+  8 endpoints as `async def`. Shares `SecretRedactor`; introduces `AsyncRateLimiter` using
+  `asyncio.Lock` instead of `threading.Lock`. Does NOT replace the sync client — additive only.
+  Decision to include in v0.2.0 rather than defer: async is a core capability, not DX sugar.
+- **Certificate pinning** — `HardenedSession(pin_fingerprints: list[str] | None = None)` verifies
+  SHA-256 cert fingerprints post-handshake. `truststore` deferred to v0.3.0 (adds OS complexity,
+  low demand).
+- **PyPI publish workflow** — `.github/workflows/publish.yml`, triggered on `v*` tag push, uses
+  `uv publish`. v0.2.0 is the first public PyPI release (not v0.1.0).
+
+**Pydantic stance (v0.3.0 decision):**
+- Default return type stays `dict[str, Any]` (zero extra dependencies).
+- `AngelListClient(validate=True)` opts into Pydantic model returns; `pydantic >= 2.0` becomes an
+  optional dependency under `[project.optional-dependencies]`.
+
+**CLI target (v0.3.0 decision):**
+- Primary audience: both analysts (ad-hoc queries) and CI pipelines (scripting).
+- JSON output by default (pipe-friendly); `--format table` for human-readable display.
+- Auth exclusively via `ANGELLIST_API_KEY` environment variable — no key ever passed on the
+  command line.

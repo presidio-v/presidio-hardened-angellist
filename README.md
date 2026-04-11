@@ -33,8 +33,8 @@ For development:
 ```bash
 git clone https://github.com/presidio-v/presidio-hardened-angellist.git
 cd presidio-hardened-angellist
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+uv venv && source .venv/bin/activate
+uv pip install -e ".[dev]"
 ```
 
 ---
@@ -78,6 +78,16 @@ client = AngelListClient(
     retry_backoff=2.0,
 )
 ```
+
+---
+
+## Roadmap
+
+| Version | Highlights |
+|---|---|
+| **0.1.0** | Initial release — hardened sync client, 8 endpoints, full security stack |
+| **0.2.0** | `NotFoundError`, configurable timeout, `AsyncAngelListClient` (httpx), certificate pinning, PyPI publish |
+| **0.3.0** | Pydantic response models (opt-in), pagination generators, CLI entrypoint, `truststore` integration |
 
 ---
 
