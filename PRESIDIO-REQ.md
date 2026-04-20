@@ -134,3 +134,8 @@ security defaults with no changes to their calling code.
 - JSON output by default (pipe-friendly); `--format table` for human-readable display.
 - Auth exclusively via `ANGELLIST_API_KEY` environment variable — no key ever passed on the
   command line.
+
+## SDLC
+
+These requirements are delivered under the family-wide Presidio SDLC:
+<https://github.com/presidio-v/presidio-hardened-docs/blob/main/sdlc/sdlc-report.md>.
