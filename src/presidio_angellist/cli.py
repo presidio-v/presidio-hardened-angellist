@@ -22,6 +22,7 @@ import argparse
 import json
 import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,7 @@ from presidio_angellist.llm import LLMClient
 from presidio_angellist.pipeline import triage_csv, triage_email, triage_imap
 from presidio_angellist.rubric_config import RubricConfig
 from presidio_angellist.store import STATUSES, DealStore, DealStoreError, default_db_path
+from presidio_angellist.watch import PollResult, watch
 
 if TYPE_CHECKING:
     from presidio_angellist.models import TriageResult
@@ -79,6 +81,20 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--imap-limit", type=int, default=None, help="Cap messages fetched (most recent)."
     )
+    p.add_argument(
+        "--watch",
+        action="store_true",
+        help="Poll IMAP on an interval and auto-triage new deals into the queue.",
+    )
+    p.add_argument(
+        "--interval",
+        type=float,
+        default=300.0,
+        help="Seconds between --watch polls (default 300).",
+    )
+    p.add_argument(
+        "--max-cycles", type=int, default=0, help="Stop --watch after N polls (0 = until Ctrl-C)."
+    )
     # Deal queue (persistence)
     p.add_argument("--save", action="store_true", help="Persist triaged deals to the queue.")
     p.add_argument(
@@ -118,9 +134,12 @@ def main(argv: list[str] | None = None) -> int:
         return _run_set_status(args)
     if args.queue:
         return _run_queue(args)
+    if args.watch:
+        return _run_watch(args)
     if not args.inputs and not args.imap:
         print(
-            "angeltriage: nothing to do — pass input files, --imap, --queue, or --set-status",
+            "angeltriage: nothing to do — pass input files, --imap, --watch, --queue, "
+            "or --set-status",
             file=sys.stderr,
         )
         return 2
@@ -180,15 +199,15 @@ def _render_queue(rows: list) -> str:  # list[SavedDeal]
 
 
 # ---------------------------------------------------------------------------
-# Triage mode
+# Shared resolution helpers
 # ---------------------------------------------------------------------------
 
 
-def _run_triage(args: argparse.Namespace) -> int:
+def _resolve_config(args: argparse.Namespace) -> tuple[RubricConfig | None, int]:
+    """Return (config, errcode). errcode 0 = ok; 2 = error already reported."""
     if args.weights and args.rubric:
         print("angeltriage: use either --weights or --rubric, not both", file=sys.stderr)
-        return 2
-
+        return None, 2
     config: RubricConfig | None = None
     try:
         if args.rubric:
@@ -198,11 +217,35 @@ def _run_triage(args: argparse.Namespace) -> int:
             config.weights = load_weights(args.weights)
     except WeightsConfigError as exc:
         print(f"angeltriage: {exc}", file=sys.stderr)
-        return 2
+        return None, 2
+    return config, 0
 
-    llm = None
-    if not args.no_llm:
-        llm = LLMClient(model=args.model) if args.model else LLMClient()
+
+def _make_llm(args: argparse.Namespace) -> LLMClient | None:
+    if args.no_llm:
+        return None
+    return LLMClient(model=args.model) if args.model else LLMClient()
+
+
+def _imap_config(args: argparse.Namespace):  # noqa: ANN202 - returns ImapConfig
+    return imap_config_from_env(
+        folder=args.imap_folder,
+        unseen=not args.imap_all,
+        from_addr=args.imap_from,
+        limit=args.imap_limit,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Triage mode
+# ---------------------------------------------------------------------------
+
+
+def _run_triage(args: argparse.Namespace) -> int:
+    config, rc = _resolve_config(args)
+    if rc:
+        return rc
+    llm = _make_llm(args)
 
     results: list[TriageResult] = []
     for item in args.inputs:
@@ -268,18 +311,68 @@ def _fetch_imap_into(
     config: RubricConfig | None,
 ) -> int:
     try:
-        imap_cfg = imap_config_from_env(
-            folder=args.imap_folder,
-            unseen=not args.imap_all,
-            from_addr=args.imap_from,
-            limit=args.imap_limit,
-        )
+        imap_cfg = _imap_config(args)
         results.extend(
             triage_imap(imap_cfg, enrich=args.enrich, memo=args.memo, llm=llm, config=config)
         )
     except ImapError as exc:
         print(f"angeltriage: {exc}", file=sys.stderr)
         return 2
+    return 0
+
+
+# ---------------------------------------------------------------------------
+# Watch mode
+# ---------------------------------------------------------------------------
+
+
+def _run_watch(args: argparse.Namespace) -> int:
+    config, rc = _resolve_config(args)
+    if rc:
+        return rc
+    llm = _make_llm(args)
+
+    try:
+        imap_cfg = _imap_config(args)
+    except ImapError as exc:
+        print(f"angeltriage: {exc}", file=sys.stderr)
+        return 2
+
+    db_path = _db_path(args)
+    print(
+        f"angeltriage: watching {imap_cfg.user}@{imap_cfg.host} folder "
+        f"'{imap_cfg.folder}' every {args.interval:g}s — saving to {db_path} (Ctrl-C to stop)",
+        file=sys.stderr,
+    )
+
+    def on_cycle(n: int, res: PollResult) -> None:
+        ts = datetime.now().strftime("%H:%M:%S")
+        print(f"[{ts}] poll {n}: fetched {res.fetched}, new {res.new_saved}")
+        for r in res.results:
+            print(f"    + {r.deal.company}  [{r.scorecard.tier} · {r.scorecard.composite}]")
+
+    def on_error(exc: Exception) -> None:
+        print(f"angeltriage: poll error (continuing): {exc}", file=sys.stderr)
+
+    try:
+        with DealStore(db_path) as store:
+            total = watch(
+                imap_cfg,
+                store,
+                interval=args.interval,
+                max_cycles=args.max_cycles,
+                llm=llm,
+                config=config,
+                enrich=args.enrich,
+                memo=args.memo,
+                on_cycle=on_cycle,
+                on_error=on_error,
+            )
+    except ImapError as exc:
+        print(f"angeltriage: imap error: {exc}", file=sys.stderr)
+        return 2
+
+    print(f"angeltriage: stopped after saving {total} new deal(s).", file=sys.stderr)
     return 0
 
 

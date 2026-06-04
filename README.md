@@ -69,6 +69,7 @@ cat deal.txt | angeltriage -         # read a pasted email from stdin
 angeltriage *.eml                    # batch, ranked by composite score
 angeltriage deals.csv                # batch-triage a CSV of deals (one row each)
 angeltriage --imap                   # pull deal emails over IMAP (see below)
+angeltriage --watch --interval 300   # poll IMAP every 5 min, auto-triage new deals
 angeltriage deal.eml --no-llm        # force the deterministic-only path
 angeltriage deal.eml --weights w.json  # tune dimension weights (see below)
 angeltriage deal.eml --rubric r.json   # full rubric config (see below)
@@ -254,6 +255,30 @@ for result in triage_imap(cfg):
     print(result.deal.company, result.scorecard.tier)
 ```
 
+### Watch mode (continuous polling)
+
+`--watch` polls the mailbox on an interval and auto-triages new deals into the
+queue — a hands-off inbox-to-queue pipeline:
+
+```bash
+angeltriage --watch --interval 300        # poll every 5 min until Ctrl-C, saving new deals
+angeltriage --watch --max-cycles 12       # poll 12 times then stop
+```
+
+Within a session, messages are deduped by `Message-ID` so the same unread email
+isn't re-triaged every poll; across restarts the deal queue dedups by deal
+identity. The first poll fails fast on a bad config/credentials; later polls
+tolerate transient network errors and keep going. Each poll prints a one-line
+summary plus any newly-saved deals. For a cron-style setup, use `--max-cycles 1`
+on a schedule instead of a long-running process.
+
+```python
+from presidio_angellist import DealStore, imap_config_from_env, watch
+
+with DealStore() as store:
+    watch(imap_config_from_env(folder="Deals"), store, interval=300)
+```
+
 > ⚠️ Don't put your mail password in a shared/remote shell. Keep it in a local
 > `.env` / your shell profile, scoped to where you run the tool.
 
@@ -319,7 +344,9 @@ Every outbound enrichment request goes through `HardenedSession`.
 | **0.2.0** | Pivot to deal-flow triage: email intake, deterministic rubric, `--weights` config, LLM extraction fallback + memo, `angeltriage` CLI |
 | **0.3.0** | CSV/batch import, full rubric config (`--rubric`: tiers, cap ceilings, per-flag penalty), HTML-email robustness, og/title enrichment fallbacks |
 | **0.4.0** | SQLite deal queue: `--save` / `--queue` / `--set-status`, dedup across runs, workflow statuses |
-| **0.5.0** | IMAP intake (`--imap`, key-gated); _(planned)_ pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
+| **0.5.0** | IMAP intake (`--imap`, key-gated) |
+| **0.5.1** | IMAP watch mode (`--watch`: interval polling, in-session dedup, auto-save) |
+| **0.6.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
 
 ---
 
@@ -342,6 +369,7 @@ presidio-hardened-angellist/
 │   ├── intake/email.py      # forwarded .eml / text -> Deal (deterministic)
 │   ├── intake/csv.py        # CSV of deals -> list[Deal]
 │   ├── intake/imap.py       # pull deal emails over IMAP (key-gated)
+│   ├── watch.py             # --watch: poll IMAP on an interval, auto-triage
 │   ├── enrich/web.py        # hardened website enrichment
 │   ├── rubric_config.py     # RubricConfig + defaults (weights/tiers/ceilings)
 │   ├── triage/rubric.py     # deterministic pre-seed/seed scorecard
