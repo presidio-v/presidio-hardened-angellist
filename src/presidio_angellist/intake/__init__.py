@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from presidio_angellist.intake.csv import parse_csv
 from presidio_angellist.intake.email import is_complete, parse_email, read_email
 
-__all__ = ["parse_email", "read_email", "is_complete"]
+__all__ = ["parse_email", "read_email", "is_complete", "parse_csv"]

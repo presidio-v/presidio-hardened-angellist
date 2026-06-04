@@ -5,13 +5,7 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-# Composite-score thresholds (0-100) mapped to a triage tier.
-_TIERS: list[tuple[float, str]] = [
-    (75.0, "Strong lead"),
-    (60.0, "Dig deeper"),
-    (45.0, "Track"),
-    (0.0, "Pass"),
-]
+from presidio_angellist.rubric_config import DEFAULT_TIERS
 
 
 @dataclass
@@ -75,20 +69,26 @@ class Scorecard:
 
     dimensions: list[DimensionScore]
     risk_flags: list[str] = field(default_factory=list)
+    # Tier thresholds (highest first) and per-flag composite penalty; defaults
+    # reproduce the built-in rubric, so existing callers are unaffected.
+    tier_thresholds: list[tuple[float, str]] = field(default_factory=lambda: list(DEFAULT_TIERS))
+    risk_penalty: float = 0.0
 
     @property
     def composite(self) -> float:
-        """Weighted score normalized to 0-100."""
+        """Weighted score normalized to 0-100, minus any per-flag penalty."""
         total_weight = sum(d.weight for d in self.dimensions)
         if total_weight == 0:
             return 0.0
         weighted = sum(d.score * d.weight for d in self.dimensions)
-        return round((weighted / (5.0 * total_weight)) * 100.0, 1)
+        base = (weighted / (5.0 * total_weight)) * 100.0
+        penalized = base - self.risk_penalty * len(self.risk_flags)
+        return round(max(0.0, min(100.0, penalized)), 1)
 
     @property
     def tier(self) -> str:
         score = self.composite
-        for threshold, label in _TIERS:
+        for threshold, label in sorted(self.tier_thresholds, reverse=True):
             if score >= threshold:
                 return label
         return "Pass"

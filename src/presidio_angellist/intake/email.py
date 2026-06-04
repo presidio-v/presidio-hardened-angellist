@@ -9,10 +9,10 @@ extraction -- see :mod:`presidio_angellist.llm`.
 
 from __future__ import annotations
 
-import html
 import re
 from email import message_from_bytes, message_from_string, policy
 from email.message import EmailMessage, Message
+from html.parser import HTMLParser
 from pathlib import Path
 
 from presidio_angellist.models import Deal, Founder
@@ -30,8 +30,13 @@ _INSTRUMENT_RE = re.compile(
     r"\b(safe|convertible\s+note|priced\s+(?:round|equity)|equity\s+round)\b",
     re.IGNORECASE,
 )
-_HTML_TAG_RE = re.compile(r"<[^>]+>")
 _MULTISPACE_RE = re.compile(r"[ \t]+")
+
+# Tags after which a line break improves readability of the extracted text.
+_HTML_BLOCK_TAGS = frozenset(
+    {"p", "br", "div", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "blockquote"}
+)
+_HTML_SKIP_TAGS = frozenset({"script", "style", "head", "title"})
 
 # Hosts that are never the company's own site.
 _SKIP_HOSTS = (
@@ -131,9 +136,39 @@ def _decode_part(part: Message) -> str:
         return payload.decode("utf-8", errors="replace")
 
 
+class _HtmlToText(HTMLParser):
+    """Collect visible text from HTML, dropping script/style and head content."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self._parts: list[str] = []
+        self._skip_depth = 0
+
+    def handle_starttag(self, tag: str, attrs: object) -> None:
+        if tag in _HTML_SKIP_TAGS:
+            self._skip_depth += 1
+        elif tag in _HTML_BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_endtag(self, tag: str) -> None:
+        if tag in _HTML_SKIP_TAGS and self._skip_depth:
+            self._skip_depth -= 1
+        elif tag in _HTML_BLOCK_TAGS:
+            self._parts.append("\n")
+
+    def handle_data(self, data: str) -> None:
+        if self._skip_depth == 0:
+            self._parts.append(data)
+
+    def text(self) -> str:
+        return "".join(self._parts)
+
+
 def _strip_html(raw: str) -> str:
-    text = _HTML_TAG_RE.sub(" ", raw)
-    return html.unescape(text)
+    parser = _HtmlToText()
+    parser.feed(raw)
+    parser.close()
+    return parser.text()
 
 
 def _normalize(text: str) -> str:

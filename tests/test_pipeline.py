@@ -75,3 +75,36 @@ class TestPipelineLLMFallback:
         result = triage_email(FIXTURES / "deal_sparse.eml", llm=llm)
         # deterministic (sparse) deal retained, not the LLM one
         assert result.deal.company != "LLM Extracted"
+
+
+class TestTriageDealAndCsv:
+    def test_triage_deal_scores_without_parsing(self) -> None:
+        from presidio_angellist.pipeline import triage_deal
+
+        deal = Deal(
+            company="Direct",
+            valuation_cap=5_000_000,
+            instrument="SAFE",
+            raw_text="paying customers MRR",
+        )
+        result = triage_deal(deal, memo=True)
+        assert result.deal.company == "Direct"
+        assert result.memo and "Direct" in result.memo
+
+    def test_triage_csv_returns_one_result_per_row(self) -> None:
+        from presidio_angellist.pipeline import triage_csv
+
+        results = triage_csv(FIXTURES / "deals.csv")
+        assert len(results) == 2
+        names = {r.deal.company for r in results}
+        assert names == {"Nimbus Robotics", "Solo Stealth"}
+
+    def test_triage_csv_applies_config(self) -> None:
+        from presidio_angellist.config import load_rubric_config
+        from presidio_angellist.pipeline import triage_csv
+
+        cfg = load_rubric_config(FIXTURES / "rubric.json")
+        results = triage_csv(FIXTURES / "deals.csv", config=cfg)
+        nimbus = next(r for r in results if r.deal.company == "Nimbus Robotics")
+        # pre-seed ceiling lowered to 8M in the fixture -> $10M cap flagged
+        assert any("high" in f for f in nimbus.scorecard.risk_flags)

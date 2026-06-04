@@ -9,20 +9,12 @@ is layered on top, never a substitute for this.
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 from presidio_angellist.models import Deal, DimensionScore, Scorecard
+from presidio_angellist.rubric_config import DEFAULT_CAP_CEILINGS, DEFAULT_WEIGHTS, RubricConfig
 
-# Relative weights; need not sum to 1 (the composite normalizes by total weight).
-DEFAULT_WEIGHTS: dict[str, float] = {
-    "team": 0.30,
-    "market": 0.20,
-    "traction": 0.20,
-    "terms": 0.15,
-    "syndicate": 0.15,
-}
-
-# Rough valuation-cap ceilings (USD) beyond which a round looks expensive for
-# the stage. Used only for transparent flagging, not hard rejection.
-_CAP_CEILING = {"pre-seed": 15_000_000, "seed": 30_000_000}
+__all__ = ["DEFAULT_WEIGHTS", "score_deal"]
 
 _TRACTION_KEYWORDS = (
     "revenue",
@@ -59,19 +51,39 @@ _STRONG_TEAM_KEYWORDS = (
 )
 
 
-def score_deal(deal: Deal, weights: dict[str, float] | None = None) -> Scorecard:
-    """Run the rubric over a deal and return a :class:`Scorecard`."""
-    w = weights or DEFAULT_WEIGHTS
+def score_deal(
+    deal: Deal,
+    config: RubricConfig | None = None,
+    weights: dict[str, float] | None = None,
+) -> Scorecard:
+    """
+    Run the rubric over a deal and return a :class:`Scorecard`.
+
+    Pass a :class:`RubricConfig` for full control (weights, tier thresholds, cap
+    ceilings, per-flag penalty), or just ``weights`` for the common case of
+    re-weighting dimensions. ``config`` takes precedence over ``weights``.
+    """
+    if config is None:
+        config = RubricConfig.default()
+        if weights is not None:
+            config = replace(config, weights=weights)
+
+    w = config.weights
     risk_flags: list[str] = []
 
     dims = [
         _score_team(deal, w["team"], risk_flags),
         _score_market(deal, w["market"]),
         _score_traction(deal, w["traction"], risk_flags),
-        _score_terms(deal, w["terms"], risk_flags),
+        _score_terms(deal, w["terms"], risk_flags, config.cap_ceilings),
         _score_syndicate(deal, w["syndicate"], risk_flags),
     ]
-    return Scorecard(dimensions=dims, risk_flags=risk_flags)
+    return Scorecard(
+        dimensions=dims,
+        risk_flags=risk_flags,
+        tier_thresholds=config.tier_thresholds,
+        risk_penalty=config.risk_penalty,
+    )
 
 
 def _haystack(deal: Deal) -> str:
@@ -125,7 +137,12 @@ def _score_traction(deal: Deal, weight: float, flags: list[str]) -> DimensionSco
     return DimensionScore("traction", round(score, 1), weight, f"signals: {', '.join(hits)}")
 
 
-def _score_terms(deal: Deal, weight: float, flags: list[str]) -> DimensionScore:
+def _score_terms(
+    deal: Deal,
+    weight: float,
+    flags: list[str],
+    cap_ceilings: dict[str, float],
+) -> DimensionScore:
     notes = []
     score = 3.0
 
@@ -135,7 +152,11 @@ def _score_terms(deal: Deal, weight: float, flags: list[str]) -> DimensionScore:
         score -= 0.5
     else:
         notes.append(f"cap ${deal.valuation_cap:,.0f}")
-        ceiling = _CAP_CEILING.get(deal.stage or "", _CAP_CEILING["seed"])
+        ceiling = (
+            cap_ceilings.get(deal.stage or "seed")
+            or cap_ceilings.get("seed")
+            or DEFAULT_CAP_CEILINGS["seed"]
+        )
         if deal.valuation_cap > ceiling:
             flags.append(
                 f"Cap ${deal.valuation_cap:,.0f} looks high for {deal.stage or 'this stage'}"

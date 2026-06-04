@@ -1,0 +1,6 @@
+{
+  "weights": {"team": 0.4, "traction": 0.25},
+  "tier_thresholds": {"Strong lead": 90, "Dig deeper": 75},
+  "cap_ceilings": {"pre-seed": 8000000},
+  "risk_penalty": 5.0
+}

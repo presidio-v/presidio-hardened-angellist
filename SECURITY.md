@@ -4,6 +4,7 @@
 
 | Version | Supported |
 | ------- | --------- |
+| 0.3.x   | ✅ Yes    |
 | 0.2.x   | ✅ Yes    |
 | 0.1.x   | ❌ No (wrapped the now-defunct AngelList API) |
 
@@ -43,10 +44,11 @@ enrichment request** the toolkit makes:
 This is a deal-flow triage tool, so it processes untrusted input. The relevant
 boundaries:
 
-- **Forwarded emails are untrusted.** Deal emails are parsed with the standard
-  library `email` module and regex/heuristics. Their content is **never executed,
-  rendered, or used to construct shell/SQL/file-system operations** — it only
-  populates a `Deal` dataclass.
+- **Forwarded emails and CSVs are untrusted.** Deal emails are parsed with the
+  standard library `email` module (and an `html.parser`-based extractor that drops
+  `<script>`/`<style>`); CSVs are parsed with the standard `csv` module. Their
+  content is **never executed, rendered, or used to construct shell/SQL/file-system
+  operations** — it only populates `Deal` dataclasses.
 - **Network enrichment is opt-in and bounded.** `--enrich` fetches the **company
   website URL extracted from the email** through `HardenedSession`. Because that
   URL originates from untrusted input, enrichment is off by default; when enabled,

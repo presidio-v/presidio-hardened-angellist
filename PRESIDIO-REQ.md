@@ -96,11 +96,17 @@ security defaults with no changes to their calling code.
 
 ## Roadmap
 
+> Note: 0.1.0 was an API-client scaffold; the project pivoted at 0.2.0 (the
+> AngelList API was shut down). The pre-pivot 0.2.0/0.3.0 plans below are kept
+> for history; the live roadmap is the post-pivot one.
+
 | Version | Planned features |
 |---|---|
-| **0.1.0** | Initial scaffold — see above |
-| **0.2.0** | Test coverage to 90%+, `NotFoundError`, configurable timeout, `AsyncAngelListClient` (httpx), certificate pinning, PyPI publish workflow |
-| **0.3.0** | Pydantic response models (opt-in via `validate=True`), pagination generators (`iter_startups`, `iter_users`), CLI entrypoint (JSON default + `--format table`), optional `truststore` integration |
+| **0.1.0** | Initial scaffold (hardened AngelList API client) — see above |
+| **0.2.0** *(pivot)* | Deal-flow triage: email intake, deterministic rubric, `--weights`, LLM extraction fallback + memo, `angeltriage` CLI |
+| **0.3.0** | CSV/batch import, full rubric config (`--rubric`), HTML-email robustness, enrichment fallbacks |
+| **0.4.0** | Optional third-party enrichment (Crunchbase/Harmonic), ranked deal queue persistence |
+| _superseded_ | (pre-pivot 0.2/0.3: `AsyncAngelListClient`, cert pinning, Pydantic models, pagination — dropped with the API client) |
 
 ---
 
@@ -193,6 +199,45 @@ enrichment calls.
   non-numeric/boolean weights, non-object JSON, and an all-zero set all raise
   `WeightsConfigError`; the CLI maps it to exit code 2. Untrusted config never
   silently degrades the rubric.
+
+---
+
+### v0.3.0 — Deliberation Log (2026-06-04)
+
+Delivered the four roadmap items for 0.3.0. Scope decisions:
+
+- **CSV/batch intake (`intake/csv.py`).** Each row → one `Deal` via the same
+  scoring path as emails. Headers are matched case-insensitively against an alias
+  table so exports from different trackers work without remapping; money cells
+  accept `$1.2M` / `1,200,000` / `500k`; founders split on `;`/`,`; rows with no
+  company are skipped. The row's text is stuffed into `Deal.raw_text` so the
+  rubric's keyword scan (credentials, traction) still has something to read.
+- **Full rubric config (`--rubric`).** Introduced `RubricConfig` (weights, tier
+  thresholds, cap ceilings, per-flag `risk_penalty`) in a new leaf module
+  `rubric_config.py` to break a config↔rubric import cycle. `Scorecard` gained
+  `tier_thresholds` and `risk_penalty` fields **with defaults equal to the prior
+  built-ins**, so the change is backward compatible (existing callers and the
+  `weights=` kwarg are unaffected). `--weights` and `--rubric` are mutually
+  exclusive; both fail closed via `WeightsConfigError`.
+- **"Per-flag deductions" interpretation.** Risk flags stay free-text strings;
+  `risk_penalty` deducts a flat N points from the composite per flag (clamped to
+  0–100). This delivers configurable downgrading without restructuring flags into
+  coded categories — a smaller, lower-risk change that's still auditable.
+- **HTML-email robustness.** Replaced the regex tag-stripper with an
+  `html.parser`-based extractor that drops `<script>`/`<style>`/`<head>`,
+  inserts line breaks at block boundaries, and decodes entities — more reliable
+  than regex on real multipart HTML emails.
+- **Enrichment fallbacks.** Website enrichment now tries `<meta description>` →
+  `og:description` → `<title>` for the one-liner. Third-party data sources
+  (Crunchbase/Harmonic) remain deferred to 0.4.0 (need paid access/keys).
+
+**Delivered in v0.3.0:**
+- `intake/csv.py` + `parse_csv`; `triage_csv` / `triage_deal` in the pipeline
+- `rubric_config.py` (`RubricConfig`); `config.load_rubric_config`; `--rubric` CLI
+- `Scorecard` configurable tiers + per-flag penalty (backward compatible)
+- Robust HTML→text extraction; og/title enrichment fallbacks
+- CLI dispatches `.csv` vs `.eml`; `--weights`/`--rubric` mutual exclusion
+- Tests extended (122 total); coverage ~95%; ruff clean; version → 0.3.0
 
 ## SDLC
 
