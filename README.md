@@ -71,6 +71,9 @@ angeltriage deals.csv                # batch-triage a CSV of deals (one row each
 angeltriage deal.eml --no-llm        # force the deterministic-only path
 angeltriage deal.eml --weights w.json  # tune dimension weights (see below)
 angeltriage deal.eml --rubric r.json   # full rubric config (see below)
+angeltriage deal.eml --save          # persist to the deal queue (see below)
+angeltriage --queue                  # show the ranked, saved deal queue
+angeltriage --set-status 4 passed    # update a saved deal's workflow status
 ```
 
 `.eml`/text inputs are parsed as emails; `.csv` inputs are triaged a row at a
@@ -213,6 +216,45 @@ for result in triage_csv("deals.csv"):
 
 ---
 
+## Deal queue (persistence)
+
+`--save` persists triaged deals to a local SQLite store so triage becomes a
+workflow you work over time, instead of one-shot:
+
+```bash
+angeltriage inbox/*.eml --save           # triage + save the batch
+angeltriage --queue                      # ranked list of everything saved
+angeltriage --queue --status new         # filter by workflow status
+angeltriage --set-status 4 tracking      # new -> tracking -> passed -> committed
+```
+
+```
+  #  tier         score  status     seen  company
+  1  Strong lead   83.0  tracking      2  Nimbus Robotics
+  3  Track         49.5  new           1  Solo Stealth
+```
+
+- **Dedup across runs** — deals are keyed by website domain (or normalized
+  company name when there's no site), so the same deal forwarded by two
+  syndicates collapses to one row. `seen` counts how many times it arrived.
+- **Status is preserved on re-save** — re-triaging a `passed` deal won't reset it
+  to `new`; only the scorecard/score refresh.
+- **Store location** — `~/.angeltriage/deals.db` by default; override with `--db
+  FILE` or the `ANGELTRIAGE_DB` env var. The DB is local; nothing leaves your
+  machine.
+
+```python
+from presidio_angellist import DealStore, triage_email
+
+with DealStore() as store:                       # default path, or DealStore("deals.db")
+    saved, is_new = store.save(triage_email("deal.eml"))
+    for row in store.list(status="new"):
+        print(row.id, row.company, row.tier, row.composite)
+    store.set_status(saved.id, "tracking")
+```
+
+---
+
 ## Security hardening (retained, reused for enrichment)
 
 | Feature | What it does |
@@ -233,7 +275,8 @@ Every outbound enrichment request goes through `HardenedSession`.
 |---|---|
 | **0.2.0** | Pivot to deal-flow triage: email intake, deterministic rubric, `--weights` config, LLM extraction fallback + memo, `angeltriage` CLI |
 | **0.3.0** | CSV/batch import, full rubric config (`--rubric`: tiers, cap ceilings, per-flag penalty), HTML-email robustness, og/title enrichment fallbacks |
-| **0.4.0** | Optional third-party enrichment (Crunchbase/Harmonic), ranked deal queue persistence |
+| **0.4.0** | SQLite deal queue: `--save` / `--queue` / `--set-status`, dedup across runs, workflow statuses |
+| **0.5.0** | Pluggable third-party enrichment providers (Crunchbase/Harmonic), queue export/digest |
 
 ---
 
@@ -259,6 +302,7 @@ presidio-hardened-angellist/
 │   ├── rubric_config.py     # RubricConfig + defaults (weights/tiers/ceilings)
 │   ├── triage/rubric.py     # deterministic pre-seed/seed scorecard
 │   ├── triage/memo.py       # LLM memo + templated fallback
+│   ├── store.py             # SQLite-backed persistent deal queue
 │   ├── config.py            # --weights / --rubric config loaders
 │   ├── llm.py               # optional Claude extraction/memo (key-gated)
 │   ├── pipeline.py          # end-to-end triage_email()

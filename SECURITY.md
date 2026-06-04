@@ -4,6 +4,7 @@
 
 | Version | Supported |
 | ------- | --------- |
+| 0.4.x   | ✅ Yes    |
 | 0.3.x   | ✅ Yes    |
 | 0.2.x   | ✅ Yes    |
 | 0.1.x   | ❌ No (wrapped the now-defunct AngelList API) |
@@ -64,6 +65,11 @@ boundaries:
   key is read from the environment — **never passed on the command line** — and is
   covered by the `sk-ant-*` redaction rule. Deal content is sent to the Anthropic
   API only when these steps are explicitly invoked.
+- **The deal queue is a local store.** `--save` writes triaged deals to a local
+  SQLite file (`~/.angeltriage/deals.db` by default, parameterized via `--db` /
+  `ANGELTRIAGE_DB`). It contains deal data at rest, holds **no secrets/API keys**,
+  and never leaves the machine. Protect it with normal filesystem permissions if
+  the deal data is sensitive; queries are fully parameterized (no SQL injection).
 
 ## Dependency Management
 

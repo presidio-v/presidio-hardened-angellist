@@ -105,7 +105,8 @@ security defaults with no changes to their calling code.
 | **0.1.0** | Initial scaffold (hardened AngelList API client) — see above |
 | **0.2.0** *(pivot)* | Deal-flow triage: email intake, deterministic rubric, `--weights`, LLM extraction fallback + memo, `angeltriage` CLI |
 | **0.3.0** | CSV/batch import, full rubric config (`--rubric`), HTML-email robustness, enrichment fallbacks |
-| **0.4.0** | Optional third-party enrichment (Crunchbase/Harmonic), ranked deal queue persistence |
+| **0.4.0** | SQLite deal queue (`--save`/`--queue`/`--set-status`), dedup across runs, workflow statuses |
+| **0.5.0** | Pluggable third-party enrichment providers (Crunchbase/Harmonic), queue export/digest |
 | _superseded_ | (pre-pivot 0.2/0.3: `AsyncAngelListClient`, cert pinning, Pydantic models, pagination — dropped with the API client) |
 
 ---
@@ -238,6 +239,50 @@ Delivered the four roadmap items for 0.3.0. Scope decisions:
 - Robust HTML→text extraction; og/title enrichment fallbacks
 - CLI dispatches `.csv` vs `.eml`; `--weights`/`--rubric` mutual exclusion
 - Tests extended (122 total); coverage ~95%; ruff clean; version → 0.3.0
+
+---
+
+### v0.4.0 — Deliberation Log (2026-06-04)
+
+Deliberated the two remaining roadmap items (persistence vs third-party
+enrichment). Decision: **ship persistence; defer enrichment.**
+
+**Scope decisions:**
+
+- **Persistence is the 0.4.0 headline.** It's the highest-leverage next step
+  (turns one-shot triage into a workflow), has **zero external dependencies**, and
+  is fully testable. Third-party enrichment was explicitly deferred to 0.5.0: with
+  no API keys available, building concrete providers would be untestable
+  speculation. The provider-interface work waits until a key is in hand.
+- **Backend = stdlib `sqlite3`.** Queryable (status/tier filters, ranking),
+  robust, transactional, and dependency-free. Chosen over a JSONL file because the
+  workflow needs filtered/ranked queries and per-row status updates, which SQL
+  does cleanly.
+- **Dedup identity = website domain, else normalized company name.** The same deal
+  forwarded by multiple syndicates collapses to one row; `times_seen` tracks
+  arrivals. Domain is the more reliable key (company-name spellings vary); the
+  name fallback covers stealth/website-less deals. Documented limitation: two
+  emails for the same company with *different* listed domains won't merge.
+- **Status preserved on re-save.** Re-triaging refreshes the scorecard but never
+  resets a human-set status (`passed` stays `passed`) — the store records workflow
+  state, and re-ingestion must not clobber it. `first_seen` is preserved;
+  `last_seen`/`times_seen` update.
+- **CLI stays backward compatible.** Added `--save` / `--queue` / `--set-status` /
+  `--db` as flags (not subcommands) so every existing invocation
+  (`angeltriage deal.eml …`) keeps working unchanged. `inputs` became optional;
+  mode is resolved as set-status → queue → triage, with a clear "nothing to do"
+  error otherwise.
+- **Store location.** `~/.angeltriage/deals.db` by default, overridable via `--db`
+  or `ANGELTRIAGE_DB`. Local-only; no data leaves the machine.
+
+**Delivered in v0.4.0:**
+- `store.py` — `DealStore` (SQLite), `SavedDeal`, `dedup_key`, `STATUSES`,
+  `default_db_path`; context-manager + upsert/list/get/set_status API
+- CLI `--save` / `--queue` (with `--status`/`--tier` filters, `--json`) /
+  `--set-status` / `--db`; backward-compatible flag-based modes
+- Public exports: `DealStore`, `SavedDeal`, `DealStoreError`, `STATUSES`
+- Tests extended (150 total); `store.py` at 100% line coverage; ruff clean;
+  version → 0.4.0
 
 ## SDLC
 
