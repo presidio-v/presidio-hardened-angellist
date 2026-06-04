@@ -4,7 +4,7 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.5.x   | ✅ Yes    |
+| 0.5.x   | ✅ Yes (latest 0.5.1) |
 | 0.4.x   | ✅ Yes    |
 | 0.3.x   | ✅ Yes    |
 | 0.2.x   | ✅ Yes    |
@@ -77,6 +77,8 @@ boundaries:
   line, and they are never logged. Use an **app-specific password**, keep it in a
   local `.env` / shell profile, and don't run `--imap` in a shared or remote shell
   where the mail password would be exposed. The mailbox is opened read-only.
+  `--watch` (continuous polling) keeps those env-sourced credentials in the
+  long-running process's memory for its lifetime — run it on a host you control.
 
 ## Dependency Management
 

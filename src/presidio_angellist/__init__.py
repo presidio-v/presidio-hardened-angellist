@@ -66,6 +66,7 @@ from presidio_angellist.rubric_config import (
 from presidio_angellist.store import STATUSES, DealStore, DealStoreError, SavedDeal
 from presidio_angellist.triage.memo import write_memo
 from presidio_angellist.triage.rubric import score_deal
+from presidio_angellist.watch import PollResult, message_identity, poll_once, watch
 
 __all__ = [
     # pipeline
@@ -83,6 +84,11 @@ __all__ = [
     "ImapError",
     "FetchedMessage",
     "is_complete",
+    # watch
+    "watch",
+    "poll_once",
+    "message_identity",
+    "PollResult",
     # triage
     "score_deal",
     "write_memo",
@@ -116,4 +122,4 @@ __all__ = [
     "RateLimiter",
 ]
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"

@@ -227,3 +227,46 @@ class TestImapCli:
         rc = main([])
         assert rc == 2
         assert "--imap" in capsys.readouterr().err
+
+
+class TestWatchCli:
+    def test_watch_runs_and_reports(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from presidio_angellist.intake.imap import ImapConfig
+
+        def fake_imap_config(**kw):
+            return ImapConfig(host="h", user="u", password="p")  # noqa: S106 - test stub
+
+        captured = {}
+
+        def fake_watch(cfg, store, **kw):
+            captured["interval"] = kw.get("interval")
+            captured["max_cycles"] = kw.get("max_cycles")
+            return 3
+
+        monkeypatch.setattr("presidio_angellist.cli.imap_config_from_env", fake_imap_config)
+        monkeypatch.setattr("presidio_angellist.cli.watch", fake_watch)
+
+        rc = main(["--watch", "--no-llm", "--interval", "5", "--max-cycles", "2"])
+        assert rc == 0
+        assert captured == {"interval": 5.0, "max_cycles": 2}
+        assert "saving 3 new deal(s)" in capsys.readouterr().err
+
+    def test_watch_imap_config_error(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from presidio_angellist.intake.imap import ImapError
+
+        def boom(**kw):
+            raise ImapError("missing IMAP credentials: IMAP_HOST")
+
+        monkeypatch.setattr("presidio_angellist.cli.imap_config_from_env", boom)
+        rc = main(["--watch", "--no-llm"])
+        assert rc == 2
+        assert "missing IMAP credentials" in capsys.readouterr().err
+
+    def test_nothing_to_do_lists_watch(self, capsys: pytest.CaptureFixture[str]) -> None:
+        rc = main([])
+        assert rc == 2
+        assert "--watch" in capsys.readouterr().err

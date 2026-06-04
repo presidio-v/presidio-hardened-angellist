@@ -106,7 +106,9 @@ security defaults with no changes to their calling code.
 | **0.2.0** *(pivot)* | Deal-flow triage: email intake, deterministic rubric, `--weights`, LLM extraction fallback + memo, `angeltriage` CLI |
 | **0.3.0** | CSV/batch import, full rubric config (`--rubric`), HTML-email robustness, enrichment fallbacks |
 | **0.4.0** | SQLite deal queue (`--save`/`--queue`/`--set-status`), dedup across runs, workflow statuses |
-| **0.5.0** | IMAP intake (`--imap`, key-gated); _(planned)_ pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
+| **0.5.0** | IMAP intake (`--imap`, key-gated) |
+| **0.5.1** | IMAP watch mode (`--watch`: interval polling, in-session dedup, auto-save) |
+| **0.6.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
 | _superseded_ | (pre-pivot 0.2/0.3: `AsyncAngelListClient`, cert pinning, Pydantic models, pagination — dropped with the API client) |
 
 ---
@@ -318,6 +320,41 @@ readable) pointed at IMAP polling as the durable intake path.
 - CLI `--imap` (+ `--imap-folder` / `--imap-all` / `--imap-from` / `--imap-limit`)
 - Public exports for the IMAP surface
 - Tests extended (174 total); ruff clean; version → 0.5.0
+
+---
+
+### v0.5.1 — IMAP watch mode (2026-06-04)
+
+Follow-on to IMAP intake: a polling loop so the mailbox is checked on an interval
+and new deals are auto-triaged into the queue — a hands-off inbox → queue pipeline.
+
+**Scope decisions:**
+
+- **In-session dedup by `Message-ID`.** Because the mailbox is selected read-only,
+  an UNSEEN search returns the same messages every cycle until they're read in the
+  mail client. The loop tracks handled message identities (`Message-ID`, or a
+  content hash when absent) so an email is triaged **once per session**, not every
+  poll — avoiding wasted work and (if enabled) repeated LLM calls. Across restarts
+  the store's deal-identity dedup still prevents duplicate rows.
+- **First-cycle fail-fast, later-cycle tolerance.** A misconfiguration (bad creds /
+  folder) surfaces immediately on cycle 1 (`ImapError` propagates → CLI exit 2). A
+  long-running watcher shouldn't die on a transient network blip, so subsequent
+  cycles route errors to an `on_error` callback and keep polling.
+- **Injectable clock + connection.** `watch(...)` takes a `sleeper` and the
+  fetch takes a `connection_factory`, so the whole loop is unit-tested with no real
+  time or network (bounded by `max_cycles`).
+- **Cron-friendly.** `--max-cycles 1` makes a single pass, so a scheduled one-liner
+  is a valid alternative to a long-running process.
+- **Reuses everything.** The loop is `fetch_imap` → `triage_email` → `store.save`;
+  no new transport, no new dependency (stdlib `email`/`hashlib`/`time`).
+
+**Delivered:**
+- `watch.py` — `watch`, `poll_once`, `message_identity`, `PollResult`
+- CLI `--watch` (+ `--interval`, `--max-cycles`); shared `_resolve_config` /
+  `_make_llm` / `_imap_config` helpers factored out of the triage path
+- Public exports for the watch surface
+- Tests extended (186 total); `watch.py` at 100% line coverage; ruff clean;
+  version → 0.5.1
 
 ## SDLC
 
