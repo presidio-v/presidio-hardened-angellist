@@ -177,10 +177,22 @@ enrichment calls.
 - LLM extraction fallback + memo (`llm.py`, key-gated, optional dependency)
 - Hardened website enrichment (`enrich/web.py`)
 - Deterministic pre-seed/seed rubric (`triage/rubric.py`) + memo (`triage/memo.py`)
+- Configurable rubric weights via JSON file (`config.py`, `angeltriage --weights`)
 - End-to-end pipeline (`pipeline.py`) and `angeltriage` CLI (`cli.py`)
 - Retained hardening primitives, extracted to `hardening.py`
 - Test suite rewritten; coverage ≥ 90%; ruff clean
 - Removed the dead `AngelListClient` and its endpoint methods
+
+**`--weights` config decision:**
+- **Format = JSON.** Dependency-free on Python 3.9+ (TOML would need `tomllib`,
+  3.11+ only, or a new dependency) and matches the pipe-friendly CLI ethos.
+- **Partial overrides merge over `DEFAULT_WEIGHTS`** — a user can bump one
+  dimension (e.g. `{"team": 0.5}`) without re-specifying all five; this also
+  guarantees `score_deal` always sees every dimension key.
+- **Validation is strict and fails closed:** unknown dimensions, negative/
+  non-numeric/boolean weights, non-object JSON, and an all-zero set all raise
+  `WeightsConfigError`; the CLI maps it to exit code 2. Untrusted config never
+  silently degrades the rubric.
 
 ## SDLC
 

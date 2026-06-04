@@ -68,6 +68,7 @@ angeltriage deal.eml --json          # machine-readable output (pipe-friendly)
 cat deal.txt | angeltriage -         # read a pasted email from stdin
 angeltriage *.eml                    # batch, ranked by composite score
 angeltriage deal.eml --no-llm        # force the deterministic-only path
+angeltriage deal.eml --weights w.json  # tune the rubric (see below)
 ```
 
 Example output:
@@ -119,8 +120,34 @@ sc = score_deal(deal, weights={"team": 0.4, "market": 0.2, "traction": 0.2,
 | **Syndicate** | Named lead, allocation, social proof |
 
 Risk flags (solo founder, missing cap, cap too high for stage, no traction, no
-website) are surfaced separately. Weights live in `DEFAULT_WEIGHTS` and are
-overridable per call.
+website) are surfaced separately.
+
+### Tuning the weights
+
+Weights live in `DEFAULT_WEIGHTS` and are overridable per call, or from a JSON
+config file via `--weights`:
+
+```json
+{
+  "team": 0.5,
+  "traction": 0.3
+}
+```
+
+```bash
+angeltriage deal.eml --weights weights.json
+```
+
+Dimensions you omit keep their default weight (so partial overrides are fine),
+weights need not sum to one (the composite normalizes by total weight), and at
+least one must be positive. Valid dimensions: `team`, `market`, `traction`,
+`terms`, `syndicate`. From the library:
+
+```python
+from presidio_angellist import load_weights, triage_email
+
+result = triage_email("deal.eml", weights=load_weights("weights.json"))
+```
 
 ---
 
@@ -142,8 +169,8 @@ Every outbound enrichment request goes through `HardenedSession`.
 
 | Version | Highlights |
 |---|---|
-| **0.2.0** | Pivot to deal-flow triage: email intake, deterministic rubric, LLM extraction fallback + memo, `angeltriage` CLI |
-| **0.3.0** | CSV/batch import, configurable rubric files, more enrichment sources, HTML-email robustness |
+| **0.2.0** | Pivot to deal-flow triage: email intake, deterministic rubric, `--weights` config, LLM extraction fallback + memo, `angeltriage` CLI |
+| **0.3.0** | CSV/batch import, richer rubric config (per-flag deductions), more enrichment sources, HTML-email robustness |
 | **0.4.0** | Optional third-party enrichment (Crunchbase/Harmonic), ranked deal queue persistence |
 
 ---
@@ -168,6 +195,7 @@ presidio-hardened-angellist/
 │   ├── enrich/web.py        # hardened website enrichment
 │   ├── triage/rubric.py     # deterministic pre-seed/seed scorecard
 │   ├── triage/memo.py       # LLM memo + templated fallback
+│   ├── config.py            # --weights rubric config loader
 │   ├── llm.py               # optional Claude extraction/memo (key-gated)
 │   ├── pipeline.py          # end-to-end triage_email()
 │   └── cli.py               # angeltriage entrypoint

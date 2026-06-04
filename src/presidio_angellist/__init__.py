@@ -32,6 +32,7 @@ CLI
 
 from __future__ import annotations
 
+from presidio_angellist.config import WeightsConfigError, load_weights
 from presidio_angellist.enrich.web import enrich_from_website
 from presidio_angellist.hardening import (
     HardenedSession,
@@ -62,6 +63,9 @@ __all__ = [
     "score_deal",
     "write_memo",
     "DEFAULT_WEIGHTS",
+    # config
+    "load_weights",
+    "WeightsConfigError",
     # enrichment
     "enrich_from_website",
     # models

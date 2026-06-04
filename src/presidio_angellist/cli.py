@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from presidio_angellist import __version__
+from presidio_angellist.config import WeightsConfigError, load_weights
 from presidio_angellist.llm import LLMClient
 from presidio_angellist.pipeline import triage_email
 
@@ -40,6 +41,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument("--memo", action="store_true", help="Generate an investment memo.")
     p.add_argument("--enrich", action="store_true", help="Fetch the company website for signal.")
     p.add_argument("--no-llm", action="store_true", help="Disable the LLM (deterministic only).")
+    p.add_argument(
+        "--weights",
+        metavar="FILE",
+        default=None,
+        help="JSON file of rubric weight overrides (dimension -> non-negative number).",
+    )
     p.add_argument("--model", default=None, help="Override the Claude model id.")
     p.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging.")
     p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -57,6 +64,14 @@ def main(argv: list[str] | None = None) -> int:
         level=logging.DEBUG if args.verbose else logging.WARNING,
         format="%(levelname)s %(name)s: %(message)s",
     )
+
+    weights = None
+    if args.weights:
+        try:
+            weights = load_weights(args.weights)
+        except WeightsConfigError as exc:
+            print(f"angeltriage: {exc}", file=sys.stderr)
+            return 2
 
     llm = None
     if not args.no_llm:
@@ -80,6 +95,7 @@ def main(argv: list[str] | None = None) -> int:
                 enrich=args.enrich,
                 memo=args.memo,
                 llm=llm,
+                weights=weights,
             )
         )
 

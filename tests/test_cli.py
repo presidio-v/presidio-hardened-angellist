@@ -29,6 +29,21 @@ class TestTextOutput:
         assert "Diligence Checklist" in out
 
 
+class TestWeightsOption:
+    def test_weights_file_changes_composite(self, capsys: pytest.CaptureFixture[str]) -> None:
+        main([COMPLETE, "--no-llm", "--json"])
+        base = json.loads(capsys.readouterr().out)["scorecard"]["composite"]
+        weights = str(FIXTURES / "weights.json")
+        main([COMPLETE, "--no-llm", "--json", "--weights", weights])
+        tuned = json.loads(capsys.readouterr().out)["scorecard"]["composite"]
+        assert tuned != base
+
+    def test_invalid_weights_file_exits_2(self, capsys: pytest.CaptureFixture[str]) -> None:
+        rc = main([COMPLETE, "--no-llm", "--weights", "/nonexistent/weights.json"])
+        assert rc == 2
+        assert "weights file not found" in capsys.readouterr().err
+
+
 class TestJsonOutput:
     def test_single_json_object(self, capsys: pytest.CaptureFixture[str]) -> None:
         main([COMPLETE, "--no-llm", "--json"])
