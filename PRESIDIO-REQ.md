@@ -106,7 +106,7 @@ security defaults with no changes to their calling code.
 | **0.2.0** *(pivot)* | Deal-flow triage: email intake, deterministic rubric, `--weights`, LLM extraction fallback + memo, `angeltriage` CLI |
 | **0.3.0** | CSV/batch import, full rubric config (`--rubric`), HTML-email robustness, enrichment fallbacks |
 | **0.4.0** | SQLite deal queue (`--save`/`--queue`/`--set-status`), dedup across runs, workflow statuses |
-| **0.5.0** | Pluggable third-party enrichment providers (Crunchbase/Harmonic), queue export/digest |
+| **0.5.0** | IMAP intake (`--imap`, key-gated); _(planned)_ pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
 | _superseded_ | (pre-pivot 0.2/0.3: `AsyncAngelListClient`, cert pinning, Pydantic models, pagination — dropped with the API client) |
 
 ---
@@ -283,6 +283,41 @@ enrichment). Decision: **ship persistence; defer enrichment.**
 - Public exports: `DealStore`, `SavedDeal`, `DealStoreError`, `STATUSES`
 - Tests extended (150 total); `store.py` at 100% line coverage; ruff clean;
   version → 0.4.0
+
+---
+
+### v0.5.0 (in progress) — IMAP intake (2026-06-04)
+
+First slice of 0.5.0. Triggered by a real question — "can you fetch an email from
+my iPhone's Mail app / read IMAP creds from Keychain?" The honest answer (the
+tool runs in a Linux process, not on the phone; iOS Keychain isn't externally
+readable) pointed at IMAP polling as the durable intake path.
+
+**Scope decisions:**
+
+- **Credentials from the environment only.** `IMAP_HOST` / `IMAP_USER` /
+  `IMAP_PASSWORD` (+ optional `IMAP_PORT` / `IMAP_FOLDER` / `IMAP_SSL`). Never
+  accepted on the command line and never logged — consistent with the
+  `ANTHROPIC_API_KEY` stance. Docs steer users to **app-specific passwords** and
+  warn against putting mail passwords in shared/remote shells.
+- **Read-only mailbox select.** Messages are not marked read, so re-polling
+  re-fetches; the deal queue's dedup makes repeated polls idempotent. (A
+  `mark-seen` option can come later if wanted.)
+- **Testable without a network or a real mailbox.** `fetch_imap` takes a
+  `connection_factory` so the whole flow is unit-tested against a `FakeIMAP`
+  stand-in; `imaplib` is stdlib, so no new dependency.
+- **Reuses the existing raw-bytes path.** `parse_email` already accepts RFC822
+  bytes, so `triage_imap` is a thin fetch→`triage_email` loop; each message flows
+  through the same deterministic-first / LLM-fallback pipeline.
+- **Enrichment providers still deferred.** The rest of 0.5.0 (Crunchbase/Harmonic)
+  remains blocked on having a provider key to build and test against.
+
+**Delivered:**
+- `intake/imap.py` — `fetch_imap`, `imap_config_from_env`, `ImapConfig`,
+  `FetchedMessage`, `ImapError`; `pipeline.triage_imap`
+- CLI `--imap` (+ `--imap-folder` / `--imap-all` / `--imap-from` / `--imap-limit`)
+- Public exports for the IMAP surface
+- Tests extended (174 total); ruff clean; version → 0.5.0
 
 ## SDLC
 

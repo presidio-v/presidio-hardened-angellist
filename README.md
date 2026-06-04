@@ -68,6 +68,7 @@ angeltriage deal.eml --json          # machine-readable output (pipe-friendly)
 cat deal.txt | angeltriage -         # read a pasted email from stdin
 angeltriage *.eml                    # batch, ranked by composite score
 angeltriage deals.csv                # batch-triage a CSV of deals (one row each)
+angeltriage --imap                   # pull deal emails over IMAP (see below)
 angeltriage deal.eml --no-llm        # force the deterministic-only path
 angeltriage deal.eml --weights w.json  # tune dimension weights (see below)
 angeltriage deal.eml --rubric r.json   # full rubric config (see below)
@@ -216,6 +217,48 @@ for result in triage_csv("deals.csv"):
 
 ---
 
+## IMAP intake
+
+`--imap` pulls deal emails straight from a mailbox (file syndicate emails into a
+folder, then poll it). It runs **wherever you run it** — your laptop or a server,
+not a phone. Credentials come from the environment **only** (never the command
+line) — use an **app-specific password** (iCloud, Gmail with 2FA):
+
+```bash
+export IMAP_HOST=imap.mail.me.com      # iCloud; Gmail: imap.gmail.com
+export IMAP_USER=you@icloud.com
+export IMAP_PASSWORD=abcd-efgh-ijkl-mnop   # app-specific password
+export IMAP_FOLDER=Deals               # optional; defaults to INBOX
+
+angeltriage --imap --save              # fetch UNSEEN, triage, save to the queue
+angeltriage --imap --imap-all --imap-limit 20    # most recent 20, read or not
+angeltriage --imap --imap-from deals@syndicate.com
+```
+
+| Env var | Purpose |
+|---|---|
+| `IMAP_HOST` / `IMAP_USER` / `IMAP_PASSWORD` | Required connection + app-specific password |
+| `IMAP_PORT` | Optional, default `993` |
+| `IMAP_FOLDER` | Optional, default `INBOX` (or use `--imap-folder`) |
+| `IMAP_SSL` | Optional, default on (`0`/`false` to disable) |
+
+Flags: `--imap-folder`, `--imap-all` (not just `UNSEEN`), `--imap-from ADDR`,
+`--imap-limit N`. The mailbox is opened **read-only**, so messages aren't marked
+read — re-polling re-fetches them and the deal queue dedups by deal identity.
+
+```python
+from presidio_angellist import imap_config_from_env, triage_imap
+
+cfg = imap_config_from_env(folder="Deals", limit=20)   # reads IMAP_* env vars
+for result in triage_imap(cfg):
+    print(result.deal.company, result.scorecard.tier)
+```
+
+> ⚠️ Don't put your mail password in a shared/remote shell. Keep it in a local
+> `.env` / your shell profile, scoped to where you run the tool.
+
+---
+
 ## Deal queue (persistence)
 
 `--save` persists triaged deals to a local SQLite store so triage becomes a
@@ -276,7 +319,7 @@ Every outbound enrichment request goes through `HardenedSession`.
 | **0.2.0** | Pivot to deal-flow triage: email intake, deterministic rubric, `--weights` config, LLM extraction fallback + memo, `angeltriage` CLI |
 | **0.3.0** | CSV/batch import, full rubric config (`--rubric`: tiers, cap ceilings, per-flag penalty), HTML-email robustness, og/title enrichment fallbacks |
 | **0.4.0** | SQLite deal queue: `--save` / `--queue` / `--set-status`, dedup across runs, workflow statuses |
-| **0.5.0** | Pluggable third-party enrichment providers (Crunchbase/Harmonic), queue export/digest |
+| **0.5.0** | IMAP intake (`--imap`, key-gated); _(planned)_ pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
 
 ---
 
@@ -298,6 +341,7 @@ presidio-hardened-angellist/
 │   ├── models.py            # Deal, Scorecard, TriageResult
 │   ├── intake/email.py      # forwarded .eml / text -> Deal (deterministic)
 │   ├── intake/csv.py        # CSV of deals -> list[Deal]
+│   ├── intake/imap.py       # pull deal emails over IMAP (key-gated)
 │   ├── enrich/web.py        # hardened website enrichment
 │   ├── rubric_config.py     # RubricConfig + defaults (weights/tiers/ceilings)
 │   ├── triage/rubric.py     # deterministic pre-seed/seed scorecard

@@ -4,6 +4,7 @@
 
 | Version | Supported |
 | ------- | --------- |
+| 0.5.x   | ✅ Yes    |
 | 0.4.x   | ✅ Yes    |
 | 0.3.x   | ✅ Yes    |
 | 0.2.x   | ✅ Yes    |
@@ -70,6 +71,12 @@ boundaries:
   `ANGELTRIAGE_DB`). It contains deal data at rest, holds **no secrets/API keys**,
   and never leaves the machine. Protect it with normal filesystem permissions if
   the deal data is sensitive; queries are fully parameterized (no SQL injection).
+- **IMAP credentials come from the environment only.** `--imap` reads
+  `IMAP_HOST` / `IMAP_USER` / `IMAP_PASSWORD` (and optional `IMAP_PORT` /
+  `IMAP_FOLDER` / `IMAP_SSL`) from the environment — **never** from the command
+  line, and they are never logged. Use an **app-specific password**, keep it in a
+  local `.env` / shell profile, and don't run `--imap` in a shared or remote shell
+  where the mail password would be exposed. The mailbox is opened read-only.
 
 ## Dependency Management
 

@@ -27,8 +27,9 @@ from typing import TYPE_CHECKING
 
 from presidio_angellist import __version__
 from presidio_angellist.config import WeightsConfigError, load_rubric_config, load_weights
+from presidio_angellist.intake.imap import ImapError, imap_config_from_env
 from presidio_angellist.llm import LLMClient
-from presidio_angellist.pipeline import triage_csv, triage_email
+from presidio_angellist.pipeline import triage_csv, triage_email, triage_imap
 from presidio_angellist.rubric_config import RubricConfig
 from presidio_angellist.store import STATUSES, DealStore, DealStoreError, default_db_path
 
@@ -64,6 +65,20 @@ def _build_parser() -> argparse.ArgumentParser:
         "risk_penalty). Mutually exclusive with --weights.",
     )
     p.add_argument("--model", default=None, help="Override the Claude model id.")
+    # IMAP intake (credentials via IMAP_* env vars, never the command line)
+    p.add_argument(
+        "--imap",
+        action="store_true",
+        help="Fetch deal emails over IMAP (creds via IMAP_HOST/IMAP_USER/IMAP_PASSWORD).",
+    )
+    p.add_argument(
+        "--imap-folder", default=None, help="IMAP folder (default: $IMAP_FOLDER or INBOX)."
+    )
+    p.add_argument("--imap-all", action="store_true", help="Fetch ALL messages, not just UNSEEN.")
+    p.add_argument("--imap-from", default=None, help="Only fetch messages FROM this address.")
+    p.add_argument(
+        "--imap-limit", type=int, default=None, help="Cap messages fetched (most recent)."
+    )
     # Deal queue (persistence)
     p.add_argument("--save", action="store_true", help="Persist triaged deals to the queue.")
     p.add_argument(
@@ -103,9 +118,9 @@ def main(argv: list[str] | None = None) -> int:
         return _run_set_status(args)
     if args.queue:
         return _run_queue(args)
-    if not args.inputs:
+    if not args.inputs and not args.imap:
         print(
-            "angeltriage: nothing to do — pass input files, --queue, or --set-status",
+            "angeltriage: nothing to do — pass input files, --imap, --queue, or --set-status",
             file=sys.stderr,
         )
         return 2
@@ -226,6 +241,11 @@ def _run_triage(args: argparse.Namespace) -> int:
                 )
             )
 
+    if args.imap:
+        rc = _fetch_imap_into(results, args, llm, config)
+        if rc != 0:
+            return rc
+
     # Rank highest-scoring first when triaging a batch.
     results.sort(key=lambda r: r.scorecard.composite, reverse=True)
 
@@ -233,11 +253,33 @@ def _run_triage(args: argparse.Namespace) -> int:
 
     if args.json:
         payload = [r.to_dict() for r in results]
-        print(json.dumps(payload if len(payload) > 1 else payload[0], indent=2))
+        print(json.dumps(payload[0] if len(payload) == 1 else payload, indent=2))
     else:
         print(_render(results))
         if save_note:
             print("\n" + save_note)
+    return 0
+
+
+def _fetch_imap_into(
+    results: list[TriageResult],
+    args: argparse.Namespace,
+    llm: LLMClient | None,
+    config: RubricConfig | None,
+) -> int:
+    try:
+        imap_cfg = imap_config_from_env(
+            folder=args.imap_folder,
+            unseen=not args.imap_all,
+            from_addr=args.imap_from,
+            limit=args.imap_limit,
+        )
+        results.extend(
+            triage_imap(imap_cfg, enrich=args.enrich, memo=args.memo, llm=llm, config=config)
+        )
+    except ImapError as exc:
+        print(f"angeltriage: {exc}", file=sys.stderr)
+        return 2
     return 0
 
 
@@ -253,6 +295,8 @@ def _save_results(results: list[TriageResult], args: argparse.Namespace) -> str:
 
 
 def _render(results: list[TriageResult]) -> str:
+    if not results:
+        return "(no deals)"
     out: list[str] = []
     for i, r in enumerate(results):
         if i:
