@@ -119,3 +119,67 @@ class TestRubricAndCsvCli:
     def test_bad_rubric_file_exits_2(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc = main([COMPLETE, "--no-llm", "--rubric", "/nonexistent/rubric.json"])
         assert rc == 2
+
+
+class TestQueueCli:
+    def test_save_then_queue_round_trip(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        db = str(tmp_path / "q.db")
+        rc = main([COMPLETE, "--no-llm", "--save", "--db", db])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Saved 1 deal(s)" in out
+
+        rc = main(["--queue", "--db", db])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Nimbus Robotics" in out
+
+    def test_queue_json(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+        db = str(tmp_path / "q.db")
+        main([COMPLETE, "--no-llm", "--save", "--db", db])
+        capsys.readouterr()
+        main(["--queue", "--db", db, "--json"])
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert data[0]["company"] == "Nimbus Robotics"
+
+    def test_empty_queue(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+        rc = main(["--queue", "--db", str(tmp_path / "empty.db")])
+        assert rc == 0
+        assert "empty" in capsys.readouterr().out
+
+    def test_set_status(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+        db = str(tmp_path / "q.db")
+        main([COMPLETE, "--no-llm", "--save", "--db", db])
+        capsys.readouterr()
+        rc = main(["--set-status", "1", "passed", "--db", db])
+        assert rc == 0
+        assert "passed" in capsys.readouterr().out
+
+    def test_set_status_bad_id(self, capsys: pytest.CaptureFixture[str], tmp_path: Path) -> None:
+        rc = main(["--set-status", "notanint", "passed", "--db", str(tmp_path / "q.db")])
+        assert rc == 2
+        assert "must be an integer" in capsys.readouterr().err
+
+    def test_set_status_bad_status(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        db = str(tmp_path / "q.db")
+        main([COMPLETE, "--no-llm", "--save", "--db", db])
+        capsys.readouterr()
+        rc = main(["--set-status", "1", "bogus", "--db", db])
+        assert rc == 2
+        assert "unknown status" in capsys.readouterr().err
+
+    def test_queue_invalid_status_filter(
+        self, capsys: pytest.CaptureFixture[str], tmp_path: Path
+    ) -> None:
+        rc = main(["--queue", "--db", str(tmp_path / "q.db"), "--status", "bogus"])
+        assert rc == 2
+
+    def test_nothing_to_do(self, capsys: pytest.CaptureFixture[str]) -> None:
+        rc = main([])
+        assert rc == 2
+        assert "nothing to do" in capsys.readouterr().err

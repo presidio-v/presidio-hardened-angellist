@@ -14,3 +14,6 @@ coverage.xml
 .specify/
 files.zip
 scaffold_extracted/
+# Local deal-queue stores
+*.db
+.angeltriage/

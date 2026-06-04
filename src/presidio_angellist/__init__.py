@@ -56,6 +56,7 @@ from presidio_angellist.rubric_config import (
     DEFAULT_WEIGHTS,
     RubricConfig,
 )
+from presidio_angellist.store import STATUSES, DealStore, DealStoreError, SavedDeal
 from presidio_angellist.triage.memo import write_memo
 from presidio_angellist.triage.rubric import score_deal
 
@@ -80,6 +81,11 @@ __all__ = [
     "load_weights",
     "load_rubric_config",
     "WeightsConfigError",
+    # persistence
+    "DealStore",
+    "SavedDeal",
+    "DealStoreError",
+    "STATUSES",
     # enrichment
     "enrich_from_website",
     # models
@@ -97,4 +103,4 @@ __all__ = [
     "RateLimiter",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
