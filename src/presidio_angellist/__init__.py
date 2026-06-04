@@ -32,13 +32,14 @@ CLI
 
 from __future__ import annotations
 
-from presidio_angellist.config import WeightsConfigError, load_weights
+from presidio_angellist.config import WeightsConfigError, load_rubric_config, load_weights
 from presidio_angellist.enrich.web import enrich_from_website
 from presidio_angellist.hardening import (
     HardenedSession,
     RateLimiter,
     SecretRedactor,
 )
+from presidio_angellist.intake.csv import parse_csv
 from presidio_angellist.intake.email import is_complete, parse_email, read_email
 from presidio_angellist.llm import LLMClient, LLMUnavailableError
 from presidio_angellist.models import (
@@ -48,23 +49,36 @@ from presidio_angellist.models import (
     Scorecard,
     TriageResult,
 )
-from presidio_angellist.pipeline import triage_email
+from presidio_angellist.pipeline import triage_csv, triage_deal, triage_email
+from presidio_angellist.rubric_config import (
+    DEFAULT_CAP_CEILINGS,
+    DEFAULT_TIERS,
+    DEFAULT_WEIGHTS,
+    RubricConfig,
+)
 from presidio_angellist.triage.memo import write_memo
-from presidio_angellist.triage.rubric import DEFAULT_WEIGHTS, score_deal
+from presidio_angellist.triage.rubric import score_deal
 
 __all__ = [
     # pipeline
     "triage_email",
+    "triage_csv",
+    "triage_deal",
     # intake
     "parse_email",
     "read_email",
     "is_complete",
+    "parse_csv",
     # triage
     "score_deal",
     "write_memo",
     "DEFAULT_WEIGHTS",
+    "DEFAULT_CAP_CEILINGS",
+    "DEFAULT_TIERS",
+    "RubricConfig",
     # config
     "load_weights",
+    "load_rubric_config",
     "WeightsConfigError",
     # enrichment
     "enrich_from_website",
@@ -83,4 +97,4 @@ __all__ = [
     "RateLimiter",
 ]
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"

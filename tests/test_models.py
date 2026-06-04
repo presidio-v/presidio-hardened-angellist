@@ -37,3 +37,27 @@ class TestTriageResult:
         assert data["deal"]["company"] == "X"
         assert data["scorecard"]["risk_flags"] == ["flag"]
         assert data["memo"] == "memo text"
+
+
+class TestScorecardConfig:
+    def test_risk_penalty_applied_per_flag(self) -> None:
+        dims = [DimensionScore("a", 5, 1, "n")]
+        sc = Scorecard(dimensions=dims, risk_flags=["f1", "f2"], risk_penalty=10.0)
+        # base 100 - 10*2 = 80
+        assert sc.composite == 80.0
+
+    def test_penalty_clamped_at_zero(self) -> None:
+        dims = [DimensionScore("a", 1, 1, "n")]
+        sc = Scorecard(dimensions=dims, risk_flags=["f"] * 50, risk_penalty=10.0)
+        assert sc.composite == 0.0
+
+    def test_custom_tier_thresholds(self) -> None:
+        dims = [DimensionScore("a", 5, 1, "n")]
+        sc = Scorecard(dimensions=dims, tier_thresholds=[(95.0, "Strong lead"), (0.0, "Pass")])
+        assert sc.composite == 100.0
+        assert sc.tier == "Strong lead"
+        sc2 = Scorecard(
+            dimensions=[DimensionScore("a", 4, 1, "n")],
+            tier_thresholds=[(95.0, "Strong lead"), (0.0, "Pass")],
+        )
+        assert sc2.tier == "Pass"

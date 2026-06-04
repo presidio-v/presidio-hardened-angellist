@@ -23,9 +23,10 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from presidio_angellist import __version__
-from presidio_angellist.config import WeightsConfigError, load_weights
+from presidio_angellist.config import WeightsConfigError, load_rubric_config, load_weights
 from presidio_angellist.llm import LLMClient
-from presidio_angellist.pipeline import triage_email
+from presidio_angellist.pipeline import triage_csv, triage_email
+from presidio_angellist.rubric_config import RubricConfig
 
 if TYPE_CHECKING:
     from presidio_angellist.models import TriageResult
@@ -36,7 +37,11 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="angeltriage",
         description="Triage forwarded AngelList/syndicate deal emails (pre-seed/seed).",
     )
-    p.add_argument("inputs", nargs="+", help="One or more .eml files, or '-' for stdin.")
+    p.add_argument(
+        "inputs",
+        nargs="+",
+        help="One or more .eml or .csv files, or '-' for stdin (treated as an email).",
+    )
     p.add_argument("--json", action="store_true", help="Emit JSON instead of text.")
     p.add_argument("--memo", action="store_true", help="Generate an investment memo.")
     p.add_argument("--enrich", action="store_true", help="Fetch the company website for signal.")
@@ -46,6 +51,13 @@ def _build_parser() -> argparse.ArgumentParser:
         metavar="FILE",
         default=None,
         help="JSON file of rubric weight overrides (dimension -> non-negative number).",
+    )
+    p.add_argument(
+        "--rubric",
+        metavar="FILE",
+        default=None,
+        help="JSON file of full rubric config (weights, tier_thresholds, cap_ceilings, "
+        "risk_penalty). Mutually exclusive with --weights.",
     )
     p.add_argument("--model", default=None, help="Override the Claude model id.")
     p.add_argument("-v", "--verbose", action="store_true", help="Enable debug logging.")
@@ -65,13 +77,20 @@ def main(argv: list[str] | None = None) -> int:
         format="%(levelname)s %(name)s: %(message)s",
     )
 
-    weights = None
-    if args.weights:
-        try:
-            weights = load_weights(args.weights)
-        except WeightsConfigError as exc:
-            print(f"angeltriage: {exc}", file=sys.stderr)
-            return 2
+    if args.weights and args.rubric:
+        print("angeltriage: use either --weights or --rubric, not both", file=sys.stderr)
+        return 2
+
+    config: RubricConfig | None = None
+    try:
+        if args.rubric:
+            config = load_rubric_config(args.rubric)
+        elif args.weights:
+            config = RubricConfig.default()
+            config.weights = load_weights(args.weights)
+    except WeightsConfigError as exc:
+        print(f"angeltriage: {exc}", file=sys.stderr)
+        return 2
 
     llm = None
     if not args.no_llm:
@@ -81,23 +100,44 @@ def main(argv: list[str] | None = None) -> int:
     for item in args.inputs:
         if item == "-":
             text, name = _read_stdin()
-            source: str | Path = text
-        else:
-            source = Path(item)
-            name = item
-            if not source.is_file():
-                print(f"angeltriage: no such file: {item}", file=sys.stderr)
-                return 2
-        results.append(
-            triage_email(
-                source,
-                source_name=name,
-                enrich=args.enrich,
-                memo=args.memo,
-                llm=llm,
-                weights=weights,
+            results.append(
+                triage_email(
+                    text,
+                    source_name=name,
+                    enrich=args.enrich,
+                    memo=args.memo,
+                    llm=llm,
+                    config=config,
+                )
             )
-        )
+            continue
+
+        source = Path(item)
+        if not source.is_file():
+            print(f"angeltriage: no such file: {item}", file=sys.stderr)
+            return 2
+
+        if source.suffix.lower() == ".csv":
+            results.extend(
+                triage_csv(
+                    source,
+                    enrich=args.enrich,
+                    memo=args.memo,
+                    llm=llm,
+                    config=config,
+                )
+            )
+        else:
+            results.append(
+                triage_email(
+                    source,
+                    source_name=item,
+                    enrich=args.enrich,
+                    memo=args.memo,
+                    llm=llm,
+                    config=config,
+                )
+            )
 
     # Rank highest-scoring first when triaging a batch.
     results.sort(key=lambda r: r.scorecard.composite, reverse=True)

@@ -60,3 +60,29 @@ class TestEnrich:
         deal = Deal(company="Acme", website="https://acme.example.com")
         enrich_from_website(deal)  # must not raise
         assert deal.one_liner is None
+
+
+class TestEnrichFallbacks:
+    @rsps_lib.activate
+    def test_og_description_fallback(self) -> None:
+        rsps_lib.add(
+            rsps_lib.GET,
+            "https://acme.example.com",
+            body='<meta property="og:description" content="OG tagline here.">',
+            status=200,
+        )
+        deal = Deal(company="Acme", website="https://acme.example.com")
+        enrich_from_website(deal)
+        assert deal.one_liner == "OG tagline here."
+
+    @rsps_lib.activate
+    def test_title_fallback(self) -> None:
+        rsps_lib.add(
+            rsps_lib.GET,
+            "https://acme.example.com",
+            body="<html><head><title>Acme — robots</title></head><body>hi</body></html>",
+            status=200,
+        )
+        deal = Deal(company="Acme", website="https://acme.example.com")
+        enrich_from_website(deal)
+        assert deal.one_liner == "Acme — robots"

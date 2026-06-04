@@ -27,6 +27,10 @@ _META_DESC_RE = re.compile(
     r'<meta[^>]+name=["\']description["\'][^>]+content=["\'](.*?)["\']',
     re.IGNORECASE | re.DOTALL,
 )
+_OG_DESC_RE = re.compile(
+    r'<meta[^>]+property=["\']og:description["\'][^>]+content=["\'](.*?)["\']',
+    re.IGNORECASE | re.DOTALL,
+)
 _WS_RE = re.compile(r"\s+")
 
 
@@ -36,8 +40,10 @@ def enrich_from_website(
     timeout: float = 10.0,
 ) -> Deal:
     """
-    Populate ``deal.one_liner`` from the company site's meta description when
-    it's missing. Mutates and returns ``deal``.
+    Backfill ``deal.one_liner`` from the company site when it's missing.
+
+    Tries, in order: ``<meta name="description">``, ``<meta property=
+    "og:description">``, then ``<title>``. Mutates and returns ``deal``.
     """
     if not deal.website:
         return deal
@@ -53,10 +59,15 @@ def enrich_from_website(
         _log.info("presidio_angellist: enrichment HTTP %s for %s", resp.status_code, deal.website)
         return deal
 
-    body = resp.text
-    description = _first_group(_META_DESC_RE, body)
-    if description and not deal.one_liner:
-        deal.one_liner = description
+    if not deal.one_liner:
+        body = resp.text
+        one_liner = (
+            _first_group(_META_DESC_RE, body)
+            or _first_group(_OG_DESC_RE, body)
+            or _first_group(_TITLE_RE, body)
+        )
+        if one_liner:
+            deal.one_liner = one_liner
     return deal
 
 

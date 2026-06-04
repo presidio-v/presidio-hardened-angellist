@@ -89,3 +89,50 @@ class TestScorecardSerialization:
         assert data["tier"] == sc.tier
         assert data["composite"] == sc.composite
         assert len(data["dimensions"]) == len(sc.dimensions)
+
+
+class TestRubricConfig:
+    def test_config_takes_precedence_over_weights(self) -> None:
+        from presidio_angellist.rubric_config import RubricConfig
+
+        deal = _strong_deal()
+        cfg = RubricConfig.default()
+        cfg.weights = {"team": 1.0, "market": 0.0, "traction": 0.0, "terms": 0.0, "syndicate": 0.0}
+        # weights arg should be ignored when config is given
+        sc = score_deal(
+            deal,
+            config=cfg,
+            weights={"team": 0.0, "market": 1.0, "traction": 0.0, "terms": 0.0, "syndicate": 0.0},
+        )
+        team = next(d for d in sc.dimensions if d.name == "team")
+        assert team.weight == 1.0
+
+    def test_risk_penalty_lowers_composite(self) -> None:
+        from presidio_angellist.rubric_config import RubricConfig
+
+        deal = _strong_deal()
+        deal.website = None  # guarantees at least one risk flag
+        base = score_deal(deal).composite
+        cfg = RubricConfig.default()
+        cfg.risk_penalty = 10.0
+        penalized = score_deal(deal, config=cfg).composite
+        assert penalized < base
+
+    def test_custom_cap_ceiling_triggers_flag(self) -> None:
+        from presidio_angellist.rubric_config import RubricConfig
+
+        deal = _strong_deal()  # $10M cap, pre-seed
+        cfg = RubricConfig.default()
+        cfg.cap_ceilings = {"pre-seed": 8_000_000, "seed": 30_000_000}
+        sc = score_deal(deal, config=cfg)
+        assert any("high" in f for f in sc.risk_flags)
+
+    def test_custom_tier_thresholds(self) -> None:
+        from presidio_angellist.rubric_config import RubricConfig
+
+        deal = _strong_deal()
+        cfg = RubricConfig.default()
+        cfg.tier_thresholds = [(95.0, "Strong lead"), (0.0, "Pass")]
+        sc = score_deal(deal, config=cfg)
+        # strong deal scores ~83, below the raised 95 bar -> Pass
+        assert sc.tier == "Pass"

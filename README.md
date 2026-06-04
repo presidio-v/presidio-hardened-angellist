@@ -67,9 +67,14 @@ angeltriage deal.eml --enrich        # fetch the company site for more signal
 angeltriage deal.eml --json          # machine-readable output (pipe-friendly)
 cat deal.txt | angeltriage -         # read a pasted email from stdin
 angeltriage *.eml                    # batch, ranked by composite score
+angeltriage deals.csv                # batch-triage a CSV of deals (one row each)
 angeltriage deal.eml --no-llm        # force the deterministic-only path
-angeltriage deal.eml --weights w.json  # tune the rubric (see below)
+angeltriage deal.eml --weights w.json  # tune dimension weights (see below)
+angeltriage deal.eml --rubric r.json   # full rubric config (see below)
 ```
+
+`.eml`/text inputs are parsed as emails; `.csv` inputs are triaged a row at a
+time. You can mix files in one batch — everything is ranked together by score.
 
 Example output:
 
@@ -149,6 +154,63 @@ from presidio_angellist import load_weights, triage_email
 result = triage_email("deal.eml", weights=load_weights("weights.json"))
 ```
 
+### Full rubric config (`--rubric`)
+
+For more than weights, pass a `--rubric` file. All sections are optional and
+merge over the defaults:
+
+```json
+{
+  "weights": { "team": 0.4, "traction": 0.25 },
+  "tier_thresholds": { "Strong lead": 90, "Dig deeper": 75 },
+  "cap_ceilings": { "pre-seed": 8000000, "seed": 25000000 },
+  "risk_penalty": 5.0
+}
+```
+
+- **`tier_thresholds`** — minimum composite (0–100) for each tier label. The
+  `Pass` floor at 0 is always retained.
+- **`cap_ceilings`** — per-stage valuation-cap ceiling (USD); caps above it raise
+  a risk flag and dock the Terms score.
+- **`risk_penalty`** — composite points deducted **per risk flag** (default 0).
+
+```bash
+angeltriage deal.eml --rubric rubric.json   # mutually exclusive with --weights
+```
+
+```python
+from presidio_angellist import load_rubric_config, triage_email
+
+result = triage_email("deal.eml", config=load_rubric_config("rubric.json"))
+```
+
+Validation fails closed — unknown keys/dimensions, out-of-range thresholds,
+negative penalties, or malformed JSON raise `WeightsConfigError`.
+
+### CSV batch import
+
+`angeltriage deals.csv` triages one `Deal` per row. Headers are matched
+case-insensitively against common aliases:
+
+| Field | Accepted headers (any of) |
+|---|---|
+| company | `company`, `name`, `startup` |
+| valuation_cap | `valuation_cap`, `cap`, `valuation` |
+| round_size | `round_size`, `raising`, `round`, `target` |
+| website | `website`, `url`, `site` |
+| founders | `founders`, `founder`, `team` (split on `;` / `,`) |
+| … | `one_liner`, `sector`, `stage`, `instrument`, `allocation`, `lead`, `deadline`, `location`, `traction`, `links` |
+
+Money cells accept `$1.2M`, `1,200,000`, or `500k`. Rows without a company are
+skipped.
+
+```python
+from presidio_angellist import triage_csv
+
+for result in triage_csv("deals.csv"):
+    print(result.deal.company, result.scorecard.tier)
+```
+
 ---
 
 ## Security hardening (retained, reused for enrichment)
@@ -170,7 +232,7 @@ Every outbound enrichment request goes through `HardenedSession`.
 | Version | Highlights |
 |---|---|
 | **0.2.0** | Pivot to deal-flow triage: email intake, deterministic rubric, `--weights` config, LLM extraction fallback + memo, `angeltriage` CLI |
-| **0.3.0** | CSV/batch import, richer rubric config (per-flag deductions), more enrichment sources, HTML-email robustness |
+| **0.3.0** | CSV/batch import, full rubric config (`--rubric`: tiers, cap ceilings, per-flag penalty), HTML-email robustness, og/title enrichment fallbacks |
 | **0.4.0** | Optional third-party enrichment (Crunchbase/Harmonic), ranked deal queue persistence |
 
 ---
@@ -192,10 +254,12 @@ presidio-hardened-angellist/
 │   ├── hardening.py         # TLS / redaction / rate-limit primitives
 │   ├── models.py            # Deal, Scorecard, TriageResult
 │   ├── intake/email.py      # forwarded .eml / text -> Deal (deterministic)
+│   ├── intake/csv.py        # CSV of deals -> list[Deal]
 │   ├── enrich/web.py        # hardened website enrichment
+│   ├── rubric_config.py     # RubricConfig + defaults (weights/tiers/ceilings)
 │   ├── triage/rubric.py     # deterministic pre-seed/seed scorecard
 │   ├── triage/memo.py       # LLM memo + templated fallback
-│   ├── config.py            # --weights rubric config loader
+│   ├── config.py            # --weights / --rubric config loaders
 │   ├── llm.py               # optional Claude extraction/memo (key-gated)
 │   ├── pipeline.py          # end-to-end triage_email()
 │   └── cli.py               # angeltriage entrypoint

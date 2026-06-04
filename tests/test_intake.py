@@ -117,3 +117,27 @@ class TestCompanyExtraction:
         # empty subject + empty body -> Unknown company
         deal = parse_email("Subject:\n\n   ")
         assert deal.company == "Unknown"
+
+
+class TestHtmlRobustness:
+    def test_script_and_style_dropped_entities_decoded(self) -> None:
+        raw = (
+            "Subject: Html Co\n"
+            "Content-Type: text/html\n\n"
+            "<html><head><style>.x{color:red}</style><title>ignored</title></head>"
+            "<body><script>var s=1;</script><h1>Html Co</h1>"
+            "<p>Builds AI&amp;ML tools.</p><p>Raising $2M on a SAFE.</p></body></html>"
+        )
+        subject, body = read_email(raw)
+        assert "var s" not in body
+        assert "color:red" not in body
+        assert "ignored" not in body
+        assert "AI&ML tools" in body
+
+    def test_html_block_tags_separate_lines(self) -> None:
+        raw = (
+            "Subject: X\nContent-Type: text/html\n\n"
+            "<p>Acme builds widgets.</p><p>Raising $1M on a SAFE.</p>"
+        )
+        deal = parse_email(raw)
+        assert deal.round_size == 1_000_000

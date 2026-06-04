@@ -41,7 +41,7 @@ class TestWeightsOption:
     def test_invalid_weights_file_exits_2(self, capsys: pytest.CaptureFixture[str]) -> None:
         rc = main([COMPLETE, "--no-llm", "--weights", "/nonexistent/weights.json"])
         assert rc == 2
-        assert "weights file not found" in capsys.readouterr().err
+        assert "config file not found" in capsys.readouterr().err
 
 
 class TestJsonOutput:
@@ -83,3 +83,39 @@ class TestInputHandling:
         with pytest.raises(SystemExit) as exc:
             main(["--version"])
         assert exc.value.code == 0
+
+
+class TestRubricAndCsvCli:
+    def test_rubric_option_changes_tier(self, capsys: pytest.CaptureFixture[str]) -> None:
+        main([COMPLETE, "--no-llm", "--json"])
+        base = json.loads(capsys.readouterr().out)["scorecard"]["composite"]
+        rubric = str(FIXTURES / "rubric.json")
+        main([COMPLETE, "--no-llm", "--json", "--rubric", rubric])
+        tuned = json.loads(capsys.readouterr().out)["scorecard"]["composite"]
+        assert tuned < base  # penalty + high-cap flag lower it
+
+    def test_weights_and_rubric_mutually_exclusive(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = main(
+            [
+                COMPLETE,
+                "--no-llm",
+                "--weights",
+                str(FIXTURES / "weights.json"),
+                "--rubric",
+                str(FIXTURES / "rubric.json"),
+            ]
+        )
+        assert rc == 2
+        assert "not both" in capsys.readouterr().err
+
+    def test_csv_input_emits_one_per_row(self, capsys: pytest.CaptureFixture[str]) -> None:
+        main([str(FIXTURES / "deals.csv"), "--no-llm", "--json"])
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert {d["deal"]["company"] for d in data} == {"Nimbus Robotics", "Solo Stealth"}
+
+    def test_bad_rubric_file_exits_2(self, capsys: pytest.CaptureFixture[str]) -> None:
+        rc = main([COMPLETE, "--no-llm", "--rubric", "/nonexistent/rubric.json"])
+        assert rc == 2
