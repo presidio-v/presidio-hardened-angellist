@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "presidio-hardened-angellist"
-version = "0.4.0"
+version = "0.5.0"
 description = "Presidio security-hardened deal-flow triage & due-diligence toolkit for early-stage AngelList syndicate deals"
 readme = "README.md"
 license = "MIT"

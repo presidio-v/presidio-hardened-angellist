@@ -41,6 +41,13 @@ from presidio_angellist.hardening import (
 )
 from presidio_angellist.intake.csv import parse_csv
 from presidio_angellist.intake.email import is_complete, parse_email, read_email
+from presidio_angellist.intake.imap import (
+    FetchedMessage,
+    ImapConfig,
+    ImapError,
+    fetch_imap,
+    imap_config_from_env,
+)
 from presidio_angellist.llm import LLMClient, LLMUnavailableError
 from presidio_angellist.models import (
     Deal,
@@ -49,7 +56,7 @@ from presidio_angellist.models import (
     Scorecard,
     TriageResult,
 )
-from presidio_angellist.pipeline import triage_csv, triage_deal, triage_email
+from presidio_angellist.pipeline import triage_csv, triage_deal, triage_email, triage_imap
 from presidio_angellist.rubric_config import (
     DEFAULT_CAP_CEILINGS,
     DEFAULT_TIERS,
@@ -65,11 +72,17 @@ __all__ = [
     "triage_email",
     "triage_csv",
     "triage_deal",
+    "triage_imap",
     # intake
     "parse_email",
     "read_email",
-    "is_complete",
     "parse_csv",
+    "fetch_imap",
+    "imap_config_from_env",
+    "ImapConfig",
+    "ImapError",
+    "FetchedMessage",
+    "is_complete",
     # triage
     "score_deal",
     "write_memo",
@@ -103,4 +116,4 @@ __all__ = [
     "RateLimiter",
 ]
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"

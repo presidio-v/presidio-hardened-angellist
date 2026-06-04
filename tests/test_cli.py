@@ -183,3 +183,47 @@ class TestQueueCli:
         rc = main([])
         assert rc == 2
         assert "nothing to do" in capsys.readouterr().err
+
+
+class TestImapCli:
+    def test_imap_flag_triages(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from presidio_angellist.intake.imap import ImapConfig
+        from presidio_angellist.models import Deal, DimensionScore, Scorecard, TriageResult
+
+        def fake_cfg(**kw) -> ImapConfig:
+            return ImapConfig(host="h", user="u", password="p")  # noqa: S106 - test stub
+
+        def fake_triage_imap(cfg, **kw):
+            deal = Deal(company="ImapCo", raw_text="x")
+            sc = Scorecard(dimensions=[DimensionScore("team", 4.0, 1.0, "n")])
+            return [TriageResult(deal=deal, scorecard=sc)]
+
+        monkeypatch.setattr("presidio_angellist.cli.imap_config_from_env", fake_cfg)
+        monkeypatch.setattr("presidio_angellist.cli.triage_imap", fake_triage_imap)
+
+        rc = main(["--imap", "--no-llm", "--json"])
+        assert rc == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["deal"]["company"] == "ImapCo"
+
+    def test_imap_config_error_exits_2(
+        self, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from presidio_angellist.intake.imap import ImapError
+
+        def boom(**kw):
+            raise ImapError("missing IMAP credentials: IMAP_HOST")
+
+        monkeypatch.setattr("presidio_angellist.cli.imap_config_from_env", boom)
+        rc = main(["--imap", "--no-llm"])
+        assert rc == 2
+        assert "missing IMAP credentials" in capsys.readouterr().err
+
+    def test_nothing_to_do_without_imap_or_inputs(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        rc = main([])
+        assert rc == 2
+        assert "--imap" in capsys.readouterr().err

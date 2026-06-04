@@ -15,15 +15,19 @@ from typing import TYPE_CHECKING
 from presidio_angellist.enrich.web import enrich_from_website
 from presidio_angellist.intake.csv import parse_csv
 from presidio_angellist.intake.email import is_complete, parse_email
+from presidio_angellist.intake.imap import fetch_imap
 from presidio_angellist.llm import LLMClient, LLMUnavailableError
 from presidio_angellist.models import Deal, TriageResult
 from presidio_angellist.triage.memo import write_memo
 from presidio_angellist.triage.rubric import score_deal
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
     from pathlib import Path
+    from typing import Any
 
     from presidio_angellist.hardening import HardenedSession
+    from presidio_angellist.intake.imap import ImapConfig
     from presidio_angellist.rubric_config import RubricConfig
 
 _log = logging.getLogger("presidio_angellist")
@@ -113,4 +117,32 @@ def triage_csv(
             weights=weights,
         )
         for deal in parse_csv(source)
+    ]
+
+
+def triage_imap(
+    imap_config: ImapConfig,
+    *,
+    enrich: bool = False,
+    memo: bool = False,
+    llm: LLMClient | None = None,
+    session: HardenedSession | None = None,
+    config: RubricConfig | None = None,
+    weights: dict[str, float] | None = None,
+    connection_factory: Callable[[], Any] | None = None,
+) -> list[TriageResult]:
+    """Fetch deal emails over IMAP and triage each. Returns one result per message."""
+    messages = fetch_imap(imap_config, connection_factory=connection_factory)
+    return [
+        triage_email(
+            msg.raw,
+            source_name=f"imap:{msg.uid}",
+            enrich=enrich,
+            memo=memo,
+            llm=llm,
+            session=session,
+            config=config,
+            weights=weights,
+        )
+        for msg in messages
     ]
