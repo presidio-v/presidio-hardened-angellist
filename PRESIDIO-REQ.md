@@ -135,6 +135,53 @@ security defaults with no changes to their calling code.
 - Auth exclusively via `ANGELLIST_API_KEY` environment variable — no key ever passed on the
   command line.
 
+### v0.2.0 — Pivot to deal-flow triage (2026-06-04)
+
+**Why the pivot:** The legacy AngelList Startup/Funding Data API (`api.angel.co/1`)
+that v0.1.0 wrapped has been shut down. AngelList today is fund/SPV back-office
+infrastructure (SPVs, Rolling Funds, fund admin), not an open data API, and there
+is no drop-in successor for the old `/startups`, `/funding`, `/users` endpoints.
+A straight "swap the base URL" refactor is therefore impossible — the data source
+is gone, not renamed.
+
+The project's center of gravity moves from a *transport library* (a hardened API
+client) to a *triage/DD pipeline* (ingest a deal → enrich → score → memo). The
+Presidio hardening layer is retained and reused as infrastructure for outbound
+enrichment calls.
+
+**Decisions (deliberated with the requester):**
+
+- **Intake = forwarded syndicate emails.** This is the deal flow an angel actually
+  receives. Accepts both `.eml` files and pasted text. (Rejected: scraping
+  AngelList — against ToS and no stable surface; a third-party data API — deferred
+  until a paid source is in hand.)
+- **Extraction = deterministic first, LLM fallback.** Regex/heuristics parse the
+  obvious fields with zero dependencies; Claude is invoked only when
+  `is_complete()` reports the parse is too thin. Keeps the common path keyless and
+  reproducible while staying robust to messy email layouts.
+- **Triage = hybrid (rules + LLM).** A deterministic, auditable rubric (six
+  weighted dimensions + risk flags) does the scoring; Claude drafts the
+  qualitative memo on top. The deterministic core ships first and runs without a
+  key; the LLM layer is purely additive. Fits the "Presidio hardened" ethos of
+  reproducible, inspectable results.
+- **Form factor = CLI (`angeltriage`).** JSON by default option for pipelines;
+  human-readable scorecard otherwise. Batch mode ranks by composite score. LLM
+  auth exclusively via `ANTHROPIC_API_KEY` — never passed on the command line.
+- **Claude integration.** Opus 4.8 via the Anthropic SDK; structured outputs for
+  extraction, adaptive thinking, prompt caching on the frozen system prompts.
+  `anthropic` is an optional `[llm]` extra; the templated memo fallback means
+  `--memo` degrades gracefully with no key.
+
+**Delivered in v0.2.0:**
+- Email intake (`intake/email.py`) — deterministic `.eml`/text → `Deal`
+- LLM extraction fallback + memo (`llm.py`, key-gated, optional dependency)
+- Hardened website enrichment (`enrich/web.py`)
+- Deterministic pre-seed/seed rubric (`triage/rubric.py`) + memo (`triage/memo.py`)
+- End-to-end pipeline (`pipeline.py`) and `angeltriage` CLI (`cli.py`)
+- Retained hardening primitives, extracted to `hardening.py`
+- Test suite rewritten; coverage ≥ 90%; ruff clean
+- Removed the dead `AngelListClient` and its endpoint methods
+
 ## SDLC
 
 These requirements are delivered under the family-wide Presidio SDLC:

@@ -4,16 +4,20 @@ build-backend = "hatchling.build"
 
 [project]
 name = "presidio-hardened-angellist"
-version = "0.1.0"
-description = "Presidio security-hardened Python toolkit for the AngelList Startup/Funding Data API"
+version = "0.2.0"
+description = "Presidio security-hardened deal-flow triage & due-diligence toolkit for early-stage AngelList syndicate deals"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.9"
 authors = [{ name = "Presidio Security", email = "security@presidio.dev" }]
-keywords = ["angellist", "startup", "funding", "api", "security", "hardening", "presidio"]
+keywords = [
+    "angellist", "syndicate", "venture-capital", "deal-flow", "due-diligence",
+    "triage", "pre-seed", "seed", "startup", "security", "hardening", "presidio",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
+    "Intended Audience :: Financial and Insurance Industry",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.9",
@@ -22,7 +26,7 @@ classifiers = [
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
     "Topic :: Security",
-    "Topic :: Office/Business :: Financial",
+    "Topic :: Office/Business :: Financial :: Investment",
 ]
 
 dependencies = [
@@ -30,7 +34,13 @@ dependencies = [
     "urllib3>=2.0.0",
 ]
 
+[project.scripts]
+angeltriage = "presidio_angellist.cli:main"
+
 [project.optional-dependencies]
+llm = [
+    "anthropic>=0.40.0",
+]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
