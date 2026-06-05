@@ -136,3 +136,48 @@ class TestRubricConfig:
         sc = score_deal(deal, config=cfg)
         # strong deal scores ~83, below the raised 95 bar -> Pass
         assert sc.tier == "Pass"
+
+
+class TestStageScope:
+    def test_growth_deal_flagged(self) -> None:
+        from pathlib import Path
+
+        from presidio_angellist.intake.email import parse_email
+        from presidio_angellist.triage.rubric import detect_stage_scope
+
+        fixtures = Path(__file__).parent / "fixtures"
+        deal = parse_email(fixtures / "deal_growth.eml")
+        note = detect_stage_scope(deal)
+        assert note is not None
+        assert "growth-stage" in note
+
+    def test_growth_deal_scorecard_tier_out_of_scope(self) -> None:
+        from pathlib import Path
+
+        from presidio_angellist.intake.email import parse_email
+
+        fixtures = Path(__file__).parent / "fixtures"
+        sc = score_deal(parse_email(fixtures / "deal_growth.eml"))
+        assert sc.scope_note is not None
+        assert sc.tier == "Out of scope"
+
+    def test_preseed_deal_not_flagged(self) -> None:
+        deal = _strong_deal()  # pre-seed, $30k MRR, $10M cap SAFE
+        from presidio_angellist.triage.rubric import detect_stage_scope
+
+        assert detect_stage_scope(deal) is None
+        assert score_deal(deal).scope_note is None
+
+    def test_explicit_series_a_flagged(self) -> None:
+        from presidio_angellist.models import Deal
+        from presidio_angellist.triage.rubric import detect_stage_scope
+
+        deal = Deal(company="X", stage="series-a", raw_text="raising a Series A round")
+        assert detect_stage_scope(deal) is not None
+
+    def test_large_arr_alone_flags(self) -> None:
+        from presidio_angellist.models import Deal
+        from presidio_angellist.triage.rubric import detect_stage_scope
+
+        deal = Deal(company="X", raw_text="doing $12M ARR and growing fast")
+        assert detect_stage_scope(deal) is not None

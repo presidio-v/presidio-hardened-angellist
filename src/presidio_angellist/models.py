@@ -73,6 +73,9 @@ class Scorecard:
     # reproduce the built-in rubric, so existing callers are unaffected.
     tier_thresholds: list[tuple[float, str]] = field(default_factory=lambda: list(DEFAULT_TIERS))
     risk_penalty: float = 0.0
+    # Set when the deal looks outside the pre-seed/seed scope the rubric targets,
+    # in which case the composite/tier are only indicative.
+    scope_note: str | None = None
 
     @property
     def composite(self) -> float:
@@ -87,6 +90,8 @@ class Scorecard:
 
     @property
     def tier(self) -> str:
+        if self.scope_note:
+            return "Out of scope"
         score = self.composite
         for threshold, label in sorted(self.tier_thresholds, reverse=True):
             if score >= threshold:
@@ -97,6 +102,7 @@ class Scorecard:
         return {
             "composite": self.composite,
             "tier": self.tier,
+            "scope_note": self.scope_note,
             "dimensions": [asdict(d) for d in self.dimensions],
             "risk_flags": list(self.risk_flags),
         }
