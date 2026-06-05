@@ -257,7 +257,7 @@ def parse_email(
 
     deal.lead = _extract_lead(subject, body)
     deal.deadline = _extract_deadline(text)
-    deal.one_liner = _extract_one_liner(body)
+    deal.one_liner = _extract_one_liner(body, deal.company)
     deal.links = _extract_links(text)
     deal.website = _pick_website(deal.links)
     deal.founders = _extract_founders(text)
@@ -266,7 +266,17 @@ def parse_email(
 
 
 def _extract_company(subject: str, body: str) -> str:
-    """Best-effort company name from the subject line."""
+    """
+    Best-effort company name.
+
+    Tries high-precision body cues first (syndicate emails name the company in
+    predictable phrasings), then falls back to the subject line, which is often
+    cluttered with investor names and metrics.
+    """
+    from_body = _company_from_body(body)
+    if from_body:
+        return from_body
+
     subj = subject.strip()
     # Drop common forwarding/syndicate prefixes.
     subj = re.sub(r"^(re|fwd|fw)\s*:\s*", "", subj, flags=re.IGNORECASE).strip()
@@ -289,6 +299,30 @@ def _extract_company(subject: str, body: str) -> str:
         if line.strip():
             return line.strip()[:120]
     return "Unknown"
+
+
+# A company name: capitalized token(s), allowing internal & and - and digits.
+# Note: no internal '.', so a match stops at a sentence boundary ("Gamma. Great").
+_CO = r"[A-Z][A-Za-z0-9&-]*(?:[ ][A-Z][A-Za-z0-9&-]*){0,3}"
+
+# High-precision body phrasings that name the company, tried in order.
+_COMPANY_BODY_PATTERNS: tuple[re.Pattern[str], ...] = (
+    re.compile(rf"(?i:in|into)\s+our\s+({_CO})\s+(?i:deal|round|spv)"),
+    re.compile(rf"(?i:investing\s+in|invest\s+in)\s+({_CO})"),
+    re.compile(rf"({_CO})\s+(?:is|are)\s+(?:a|an|the|now|building|reinventing|transforming)\b"),
+    re.compile(rf"({_CO})\s+(?:builds?|makes?|operates?|provides?|offers?|develops?)\b"),
+    re.compile(rf"(?i:backed)\s+({_CO})\b"),
+)
+
+
+def _company_from_body(body: str) -> str | None:
+    for pattern in _COMPANY_BODY_PATTERNS:
+        m = pattern.search(body)
+        if m:
+            name = m.group(1).strip(" .,-")
+            if name:
+                return name
+    return None
 
 
 # A person's name: capitalized words joined by single spaces, no trailing dot.
@@ -316,10 +350,38 @@ def _extract_deadline(text: str) -> str | None:
     return None
 
 
-_ONE_LINER_SKIP = ("http", "from:", "to:", "sent:")
+_ONE_LINER_SKIP = (
+    "http",
+    "from:",
+    "to:",
+    "sent:",
+    "subject:",
+    "hi ",
+    "hi,",
+    "hello",
+    "hey",
+    "dear ",
+    "thanks",
+    "thank you",
+    "best,",
+    "best regards",
+    "regards",
+    "cheers",
+    "as a reminder",
+    "we have",
+    "we are",
+    "we're",
+)
+_ONE_LINER_VERBS = r"(?:is|are|builds?|makes?|operates?|provides?|offers?|develops?)"
 
 
-def _extract_one_liner(body: str) -> str | None:
+def _extract_one_liner(body: str, company: str | None = None) -> str | None:
+    # Prefer the company's own pitch sentence, e.g. "Campus is a new way to ...".
+    if company and company != "Unknown":
+        m = re.search(rf"{re.escape(company)}\s+{_ONE_LINER_VERBS}\b[^.\n]{{0,200}}", body)
+        if m:
+            return _MULTISPACE_RE.sub(" ", m.group(0)).strip()[:200]
+    # Otherwise the first substantive line that isn't a greeting/signature.
     for raw_line in body.splitlines():
         line = raw_line.strip()
         if 20 <= len(line) <= 200 and not line.lower().startswith(_ONE_LINER_SKIP):

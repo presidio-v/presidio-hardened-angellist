@@ -9,12 +9,26 @@ is layered on top, never a substitute for this.
 
 from __future__ import annotations
 
+import re
 from dataclasses import replace
 
+from presidio_angellist.intake.email import parse_money
 from presidio_angellist.models import Deal, DimensionScore, Scorecard
 from presidio_angellist.rubric_config import DEFAULT_CAP_CEILINGS, DEFAULT_WEIGHTS, RubricConfig
 
-__all__ = ["DEFAULT_WEIGHTS", "score_deal"]
+__all__ = ["DEFAULT_WEIGHTS", "score_deal", "detect_stage_scope"]
+
+# --- growth-stage (out-of-scope) detection ---------------------------------
+# The rubric targets pre-seed/seed; flag deals that look later-stage so the
+# score is presented as indicative rather than authoritative.
+_GROWTH_ARR_USD = 5_000_000  # ARR/revenue at/above this reads as growth-stage
+_LARGE_ROUND_USD = 15_000_000  # round size clearly above a typical seed
+_LATER_STAGE_RE = re.compile(r"series[\s-]+[a-d]\b", re.IGNORECASE)
+_PRICED_ROUND_RE = re.compile(
+    r"\b(venture round|series[\s-]+[a-d]|priced round|growth round|growth equity)\b",
+    re.IGNORECASE,
+)
+_MONEY_RE = re.compile(r"\$\s*([\d][\d,]*(?:\.\d+)?)\s*([kKmMbB]|thousand|million|billion)?")
 
 _TRACTION_KEYWORDS = (
     "revenue",
@@ -83,7 +97,56 @@ def score_deal(
         risk_flags=risk_flags,
         tier_thresholds=config.tier_thresholds,
         risk_penalty=config.risk_penalty,
+        scope_note=detect_stage_scope(deal),
     )
+
+
+def detect_stage_scope(deal: Deal) -> str | None:
+    """
+    Return a note if the deal looks beyond pre-seed/seed (the rubric's scope).
+
+    Signals: an explicit later-stage label, ARR/revenue at/above $5M, or a
+    priced/venture round combined with a large round size or large ARR. Returns
+    ``None`` for deals that look in-scope.
+    """
+    text = deal.raw_text or ""
+    reasons: list[str] = []
+
+    if deal.stage and _LATER_STAGE_RE.search(deal.stage):
+        reasons.append(f"stage {deal.stage}")
+
+    arr = _max_money_near(text, ("arr", "revenue", "mrr"))
+    big_arr = arr is not None and arr >= _GROWTH_ARR_USD
+    if big_arr:
+        reasons.append(f"~${arr:,.0f} ARR/revenue")
+
+    priced = _PRICED_ROUND_RE.search(text)
+    big_round = deal.round_size is not None and deal.round_size >= _LARGE_ROUND_USD
+    if priced and (big_round or big_arr):
+        label = priced.group(1).lower()
+        reasons.append(f"{label} ${deal.round_size:,.0f}" if big_round else label)
+
+    if not reasons:
+        return None
+    return (
+        "Likely growth-stage (" + "; ".join(reasons) + ") — outside pre-seed/seed "
+        "scope; score is indicative only"
+    )
+
+
+def _max_money_near(text: str, keywords: tuple[str, ...], window: int = 25) -> float | None:
+    """Largest dollar amount within ``window`` chars of any keyword."""
+    low = text.lower()
+    best: float | None = None
+    for kw in keywords:
+        for m in re.finditer(re.escape(kw), low):
+            start = max(0, m.start() - window)
+            end = min(len(text), m.end() + window)
+            for mm in _MONEY_RE.finditer(text[start:end]):
+                amount = parse_money(mm.group(1), mm.group(2))
+                if amount is not None and (best is None or amount > best):
+                    best = amount
+    return best
 
 
 def _haystack(deal: Deal) -> str:

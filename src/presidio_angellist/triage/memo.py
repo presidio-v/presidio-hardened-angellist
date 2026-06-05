@@ -33,6 +33,9 @@ def _template_memo(deal: Deal, scorecard: Scorecard) -> str:
     lines: list[str] = []
     lines.append(f"# Triage Memo — {deal.company}")
     lines.append("")
+    if scorecard.scope_note:
+        lines.append(f"> ⚠ **{scorecard.scope_note}**")
+        lines.append("")
     if deal.one_liner:
         lines.append(deal.one_liner)
         lines.append("")

@@ -404,6 +404,8 @@ def _render_one(result: TriageResult) -> str:
     lines = [
         f"{deal.company}  [{sc.tier} · {sc.composite}/100]",
     ]
+    if sc.scope_note:
+        lines.append(f"  ⚠ {sc.scope_note}")
     meta = []
     if deal.stage:
         meta.append(deal.stage)

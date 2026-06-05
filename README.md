@@ -132,6 +132,16 @@ sc = score_deal(deal, weights={"team": 0.4, "market": 0.2, "traction": 0.2,
 Risk flags (solo founder, missing cap, cap too high for stage, no traction, no
 website) are surfaced separately.
 
+### Out-of-scope (growth-stage) detection
+
+The rubric targets **pre-seed / seed**. When a deal looks later-stage — an
+explicit Series A/B/C, ARR/revenue ≥ $5M, or a priced/venture round with a large
+round size — it's tagged **`Out of scope`** with a note (e.g. *"Likely
+growth-stage (~$40M ARR; venture round $20M) — outside pre-seed/seed scope; score
+is indicative only"*) instead of being given a misleading tier. The composite is
+still computed, but flagged as indicative. Exposed as `detect_stage_scope(deal)`
+and `Scorecard.scope_note`.
+
 ### Tuning the weights
 
 Weights live in `DEFAULT_WEIGHTS` and are overridable per call, or from a JSON
@@ -346,6 +356,7 @@ Every outbound enrichment request goes through `HardenedSession`.
 | **0.4.0** | SQLite deal queue: `--save` / `--queue` / `--set-status`, dedup across runs, workflow statuses |
 | **0.5.0** | IMAP intake (`--imap`, key-gated) |
 | **0.5.1** | IMAP watch mode (`--watch`: interval polling, in-session dedup, auto-save) |
+| **0.5.2** | Better company/one-liner extraction (body cues); growth-stage out-of-scope detection |
 | **0.6.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
 
 ---

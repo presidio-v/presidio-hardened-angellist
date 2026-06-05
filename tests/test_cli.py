@@ -270,3 +270,20 @@ class TestWatchCli:
         rc = main([])
         assert rc == 2
         assert "--watch" in capsys.readouterr().err
+
+
+class TestScopeRendering:
+    def test_growth_deal_shows_out_of_scope(self, capsys: pytest.CaptureFixture[str]) -> None:
+        growth = str(FIXTURES / "deal_growth.eml")
+        rc = main([growth, "--no-llm"])
+        out = capsys.readouterr().out
+        assert rc == 0
+        assert "Out of scope" in out
+        assert "growth-stage" in out
+
+    def test_growth_deal_json_has_scope_note(self, capsys: pytest.CaptureFixture[str]) -> None:
+        growth = str(FIXTURES / "deal_growth.eml")
+        main([growth, "--no-llm", "--json"])
+        data = json.loads(capsys.readouterr().out)
+        assert data["scorecard"]["scope_note"] is not None
+        assert data["deal"]["company"] == "Campus"

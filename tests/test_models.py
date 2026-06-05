@@ -61,3 +61,18 @@ class TestScorecardConfig:
             tier_thresholds=[(95.0, "Strong lead"), (0.0, "Pass")],
         )
         assert sc2.tier == "Pass"
+
+
+class TestScopeNote:
+    def test_scope_note_overrides_tier(self) -> None:
+        sc = Scorecard(
+            dimensions=[DimensionScore("a", 5, 1, "n")],
+            scope_note="Likely growth-stage — outside scope",
+        )
+        assert sc.tier == "Out of scope"
+        assert sc.composite == 100.0  # composite still computed
+
+    def test_scope_note_none_keeps_normal_tier(self) -> None:
+        sc = Scorecard(dimensions=[DimensionScore("a", 5, 1, "n")])
+        assert sc.tier == "Strong lead"
+        assert sc.to_dict()["scope_note"] is None

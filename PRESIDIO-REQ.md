@@ -108,6 +108,7 @@ security defaults with no changes to their calling code.
 | **0.4.0** | SQLite deal queue (`--save`/`--queue`/`--set-status`), dedup across runs, workflow statuses |
 | **0.5.0** | IMAP intake (`--imap`, key-gated) |
 | **0.5.1** | IMAP watch mode (`--watch`: interval polling, in-session dedup, auto-save) |
+| **0.5.2** | Better company/one-liner extraction (body cues); growth-stage out-of-scope detection |
 | **0.6.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
 | _superseded_ | (pre-pivot 0.2/0.3: `AsyncAngelListClient`, cert pinning, Pydantic models, pagination — dropped with the API client) |
 
@@ -355,6 +356,46 @@ and new deals are auto-triaged into the queue — a hands-off inbox → queue pi
 - Public exports for the watch surface
 - Tests extended (186 total); `watch.py` at 100% line coverage; ruff clean;
   version → 0.5.1
+
+---
+
+### v0.5.2 — Extraction hardening + out-of-scope detection (2026-06-05)
+
+Driven by a real sample run (a Mana Ventures syndicate email for **Campus**, a
+growth-stage edtech deal). Two weaknesses surfaced and were fixed.
+
+**(b) Deterministic company / one-liner extraction.** The ornate subject
+("Confidential + $120k+ Filled | … 8VC backed Campus ($40M ARR today) - new way
+to go to college") made the subject-splitting heuristic return junk as the
+company, and the one-liner grabbed the signature block.
+
+- Company extraction now tries **high-precision body phrasings first** — "in our
+  X deal", "investing in X", "X is a/an…", "X builds/operates…", "backed X" — and
+  only falls back to the subject heuristic when none match. The company-name regex
+  excludes internal `.` so a match stops at a sentence boundary.
+- One-liner extraction now prefers the company's **own pitch sentence** ("Campus
+  is a new way to go to college…") and otherwise skips greeting/signature lines.
+- The Campus email is captured as `tests/fixtures/deal_growth.eml`.
+
+**(c) Growth-stage (out-of-scope) detection.** The rubric is tuned for
+pre-seed/seed; scoring a $40M-ARR / $20M venture round against it produced a
+misleading "Track 56.5".
+
+- `detect_stage_scope(deal)` flags later-stage signals: explicit Series A/B/C,
+  ARR/revenue ≥ $5M (matched near ARR/revenue/MRR, not the largest dollar figure
+  anywhere — so a seed deal's $10M cap doesn't false-positive), or a
+  priced/venture round with a large round size.
+- `Scorecard` gained `scope_note`; when set, `tier` reports **"Out of scope"** and
+  CLI/memo/JSON surface the note. The composite is still computed but marked
+  indicative. Defaults keep existing behavior (backward compatible).
+
+**Delivered:**
+- Reworked `_extract_company` / `_extract_one_liner` in `intake/email.py`
+- `triage/rubric.detect_stage_scope` + `_max_money_near`; `Scorecard.scope_note`
+- CLI + templated-memo rendering of the scope note; `deal_growth.eml` fixture
+- Verified: Campus → company "Campus", real one-liner, "Out of scope"; Nimbus
+  (real pre-seed) still "Strong lead 83.0", not flagged
+- Tests extended (202 total); ruff clean; version → 0.5.2
 
 ## SDLC
 

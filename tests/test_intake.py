@@ -141,3 +141,43 @@ class TestHtmlRobustness:
         )
         deal = parse_email(raw)
         assert deal.round_size == 1_000_000
+
+
+class TestCompanyFromBody:
+    def test_in_our_x_deal(self) -> None:
+        deal = parse_email(
+            "Subject: Confidential | XYZ backed Foo ($40M ARR)\n\n"
+            "We filled $120k in our Campus deal. Campus is a new way to learn."
+        )
+        assert deal.company == "Campus"
+
+    def test_investing_in_x(self) -> None:
+        deal = parse_email("Subject: junk | noise\n\nWe are investing in Acme's $5M round.")
+        assert deal.company == "Acme"
+
+    def test_x_is_a_pattern(self) -> None:
+        deal = parse_email("Subject: a | b | c\n\nDelta is a marketplace for parts.")
+        assert deal.company == "Delta"
+
+    def test_backed_x(self) -> None:
+        deal = parse_email("Subject: noise\n\nSequoia backed Gamma. Great team.")
+        assert deal.company == "Gamma"
+
+    def test_growth_fixture_company_and_one_liner(self) -> None:
+        deal = parse_email(FIXTURES / "deal_growth.eml")
+        assert deal.company == "Campus"
+        assert deal.one_liner is not None
+        assert deal.one_liner.startswith("Campus is a new way to go to college")
+
+    def test_subject_fallback_when_no_body_cue(self) -> None:
+        # no body phrasing -> subject heuristic still used
+        deal = parse_email("Subject: Zeta - the future\n\n$2M cap SAFE https://zeta.example.com")
+        assert deal.company == "Zeta"
+
+
+class TestOneLinerSkipsGreetings:
+    def test_skips_greeting_and_signature_lines(self) -> None:
+        body = "Hi Vladimir,\n\nMana Ventures' Syndicate\n\nAcme is a tool for plumbers."
+        deal = parse_email(f"Subject: deal\n\n{body}")
+        # company-anchored one-liner (no trailing period); greeting/signature skipped
+        assert deal.one_liner == "Acme is a tool for plumbers"
