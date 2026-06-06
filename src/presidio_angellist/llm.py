@@ -431,28 +431,73 @@ def _log_usage(resp: Any) -> None:
         )
 
 
+def _as_str(value: Any) -> str | None:
+    """Coerce a model-supplied value to a clean string (or None).
+
+    Local models don't honour a strict schema, so a field can come back as a
+    list, number, or bool. Normalise so downstream string ops (e.g. the rubric's
+    keyword scan) never see a non-string.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        return value or None
+    if isinstance(value, (list, tuple)):
+        joined = ", ".join(_as_str(v) or "" for v in value).strip(", ")
+        return joined or None
+    return str(value)
+
+
+def _as_number(value: Any) -> float | int | None:
+    """Coerce to a number, tolerating strings like '$1.5M' / '1,200,000'."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        cleaned = value.strip().lower().replace(",", "").replace("$", "")
+        mult = 1
+        if cleaned.endswith("m"):
+            mult, cleaned = 1_000_000, cleaned[:-1]
+        elif cleaned.endswith("k"):
+            mult, cleaned = 1_000, cleaned[:-1]
+        try:
+            return float(cleaned) * mult
+        except ValueError:
+            return None
+    return None
+
+
 def _deal_from_dict(data: dict[str, Any], text: str, source: str | None) -> Deal:
+    raw_founders = data.get("founders")
+    raw_founders = raw_founders if isinstance(raw_founders, list) else []
     founders = [
-        Founder(name=f["name"], role=f.get("role"))
-        for f in data.get("founders") or []
-        if f.get("name")
+        Founder(name=_as_str(f.get("name")) or "", role=_as_str(f.get("role")))
+        for f in raw_founders
+        if isinstance(f, dict) and f.get("name")
     ]
+    raw_links = data.get("links")
+    if isinstance(raw_links, str):
+        raw_links = [raw_links]
+    elif not isinstance(raw_links, list):
+        raw_links = []
+    links = [s for s in (_as_str(x) for x in raw_links) if s]
     return Deal(
-        company=data.get("company") or "Unknown",
-        one_liner=data.get("one_liner"),
-        sector=data.get("sector"),
-        stage=data.get("stage"),
-        instrument=data.get("instrument"),
-        valuation_cap=data.get("valuation_cap"),
-        round_size=data.get("round_size"),
-        allocation=data.get("allocation"),
-        lead=data.get("lead"),
-        deadline=data.get("deadline"),
-        location=data.get("location"),
-        traction=data.get("traction"),
-        website=data.get("website"),
+        company=_as_str(data.get("company")) or "Unknown",
+        one_liner=_as_str(data.get("one_liner")),
+        sector=_as_str(data.get("sector")),
+        stage=_as_str(data.get("stage")),
+        instrument=_as_str(data.get("instrument")),
+        valuation_cap=_as_number(data.get("valuation_cap")),
+        round_size=_as_number(data.get("round_size")),
+        allocation=_as_number(data.get("allocation")),
+        lead=_as_str(data.get("lead")),
+        deadline=_as_str(data.get("deadline")),
+        location=_as_str(data.get("location")),
+        traction=_as_str(data.get("traction")),
+        website=_as_str(data.get("website")),
         founders=founders,
-        links=list(data.get("links") or []),
+        links=links,
         source=source,
         raw_text=text,
         extraction_method="llm",
