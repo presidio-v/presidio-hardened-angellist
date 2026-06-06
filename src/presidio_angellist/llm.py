@@ -38,7 +38,26 @@ _ENV_BASE_URL = "ANGELTRIAGE_LLM_BASE_URL"  # e.g. http://127.0.0.1:8080/v1
 _ENV_MODEL = "ANGELTRIAGE_LLM_MODEL"
 _ENV_API_KEY = "ANGELTRIAGE_LLM_API_KEY"
 _ENV_TIMEOUT = "ANGELTRIAGE_LLM_TIMEOUT"
+# Extra JSON merged into the chat-completions request body — for server-specific
+# params the OpenAI schema doesn't cover, e.g. disabling a reasoning model's
+# thinking: {"chat_template_kwargs": {"enable_thinking": false}}.
+_ENV_EXTRA_BODY = "ANGELTRIAGE_LLM_EXTRA_BODY"
 _DEFAULT_OPENAI_TIMEOUT = 120.0
+
+
+def _parse_extra_body(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        _log.warning("presidio_angellist: %s is not valid JSON; ignoring", _ENV_EXTRA_BODY)
+        return {}
+    if not isinstance(parsed, dict):
+        _log.warning("presidio_angellist: %s must be a JSON object; ignoring", _ENV_EXTRA_BODY)
+        return {}
+    return parsed
+
 
 # Untrusted-content boundary. Deal emails are attacker-influenced, so everything
 # in the user turn is wrapped in these tags and the system prompt is explicit that
@@ -177,11 +196,13 @@ class LLMClient:
             self._timeout = timeout or float(
                 os.environ.get(_ENV_TIMEOUT) or _DEFAULT_OPENAI_TIMEOUT
             )
+            self._extra_body = _parse_extra_body(os.environ.get(_ENV_EXTRA_BODY))
         else:
             self._base_url = ""
             self._api_key = api_key
             self._model = model or _DEFAULT_MODEL
             self._timeout = timeout or _DEFAULT_OPENAI_TIMEOUT
+            self._extra_body = {}
 
     def available(self) -> bool:
         """True when the selected backend is usable (configured / importable)."""
@@ -332,6 +353,8 @@ class LLMClient:
             "temperature": 0.2,
             "stream": False,
         }
+        # Server-specific params (e.g. disabling a reasoning model's thinking).
+        payload.update(self._extra_body)
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -344,9 +367,18 @@ class LLMClient:
             raise LLMUnavailableError(f"local LLM request failed: {exc}") from exc
         _log_openai_usage(data)
         try:
-            return data["choices"][0]["message"]["content"]
+            message = data["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMUnavailableError(f"unexpected LLM response shape: {exc}") from exc
+        content = message.get("content") if isinstance(message, dict) else None
+        if not content:
+            # Reasoning models can emit only `reasoning` tokens and no final
+            # content when thinking isn't disabled or the budget is too small.
+            raise LLMUnavailableError(
+                "LLM returned empty content (reasoning-only or truncated; disable "
+                f"thinking via {_ENV_EXTRA_BODY} or raise {_ENV_TIMEOUT}/max_tokens)"
+            )
+        return content
 
 
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
@@ -399,28 +431,73 @@ def _log_usage(resp: Any) -> None:
         )
 
 
+def _as_str(value: Any) -> str | None:
+    """Coerce a model-supplied value to a clean string (or None).
+
+    Local models don't honour a strict schema, so a field can come back as a
+    list, number, or bool. Normalise so downstream string ops (e.g. the rubric's
+    keyword scan) never see a non-string.
+    """
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, str):
+        return value or None
+    if isinstance(value, (list, tuple)):
+        joined = ", ".join(_as_str(v) or "" for v in value).strip(", ")
+        return joined or None
+    return str(value)
+
+
+def _as_number(value: Any) -> float | int | None:
+    """Coerce to a number, tolerating strings like '$1.5M' / '1,200,000'."""
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        return value
+    if isinstance(value, str):
+        cleaned = value.strip().lower().replace(",", "").replace("$", "")
+        mult = 1
+        if cleaned.endswith("m"):
+            mult, cleaned = 1_000_000, cleaned[:-1]
+        elif cleaned.endswith("k"):
+            mult, cleaned = 1_000, cleaned[:-1]
+        try:
+            return float(cleaned) * mult
+        except ValueError:
+            return None
+    return None
+
+
 def _deal_from_dict(data: dict[str, Any], text: str, source: str | None) -> Deal:
+    raw_founders = data.get("founders")
+    raw_founders = raw_founders if isinstance(raw_founders, list) else []
     founders = [
-        Founder(name=f["name"], role=f.get("role"))
-        for f in data.get("founders") or []
-        if f.get("name")
+        Founder(name=_as_str(f.get("name")) or "", role=_as_str(f.get("role")))
+        for f in raw_founders
+        if isinstance(f, dict) and f.get("name")
     ]
+    raw_links = data.get("links")
+    if isinstance(raw_links, str):
+        raw_links = [raw_links]
+    elif not isinstance(raw_links, list):
+        raw_links = []
+    links = [s for s in (_as_str(x) for x in raw_links) if s]
     return Deal(
-        company=data.get("company") or "Unknown",
-        one_liner=data.get("one_liner"),
-        sector=data.get("sector"),
-        stage=data.get("stage"),
-        instrument=data.get("instrument"),
-        valuation_cap=data.get("valuation_cap"),
-        round_size=data.get("round_size"),
-        allocation=data.get("allocation"),
-        lead=data.get("lead"),
-        deadline=data.get("deadline"),
-        location=data.get("location"),
-        traction=data.get("traction"),
-        website=data.get("website"),
+        company=_as_str(data.get("company")) or "Unknown",
+        one_liner=_as_str(data.get("one_liner")),
+        sector=_as_str(data.get("sector")),
+        stage=_as_str(data.get("stage")),
+        instrument=_as_str(data.get("instrument")),
+        valuation_cap=_as_number(data.get("valuation_cap")),
+        round_size=_as_number(data.get("round_size")),
+        allocation=_as_number(data.get("allocation")),
+        lead=_as_str(data.get("lead")),
+        deadline=_as_str(data.get("deadline")),
+        location=_as_str(data.get("location")),
+        traction=_as_str(data.get("traction")),
+        website=_as_str(data.get("website")),
         founders=founders,
-        links=list(data.get("links") or []),
+        links=links,
         source=source,
         raw_text=text,
         extraction_method="llm",

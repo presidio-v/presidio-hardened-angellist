@@ -230,3 +230,74 @@ class TestOpenAIBackend:
         rsps_lib.add(rsps_lib.POST, "http://local-llm/v1/chat/completions", status=500)
         with pytest.raises(LLMUnavailableError, match="local LLM request failed"):
             _openai_client().extract_deal("raw", source=None)
+
+
+class TestExtraBodyAndContent:
+    @rsps_lib.activate
+    def test_extra_body_merged_into_request(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(
+            "ANGELTRIAGE_LLM_EXTRA_BODY", '{"chat_template_kwargs": {"enable_thinking": false}}'
+        )
+        rsps_lib.add(
+            rsps_lib.POST,
+            "http://local-llm/v1/chat/completions",
+            json={"choices": [{"message": {"content": "ok"}}]},
+            status=200,
+        )
+        LLMClient(base_url="http://local-llm/v1", model="qwen", api_key="k").write_memo(
+            _deal_from_dict({"company": "X"}, text="t", source=None),
+            __import__("presidio_angellist.models", fromlist=["Scorecard"]).Scorecard(
+                dimensions=[]
+            ),
+        )
+        body = json.loads(rsps_lib.calls[0].request.body)
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+    @rsps_lib.activate
+    def test_reasoning_only_response_raises(self) -> None:
+        # Reasoning model emitted thinking but no final content.
+        rsps_lib.add(
+            rsps_lib.POST,
+            "http://local-llm/v1/chat/completions",
+            json={"choices": [{"message": {"role": "assistant", "reasoning": "thinking..."}}]},
+            status=200,
+        )
+        with pytest.raises(LLMUnavailableError, match="empty content"):
+            _openai_client().extract_deal("raw", source=None)
+
+    def test_parse_extra_body(self) -> None:
+        from presidio_angellist.llm import _parse_extra_body
+
+        assert _parse_extra_body(None) == {}
+        assert _parse_extra_body('{"a": 1}') == {"a": 1}
+        assert _parse_extra_body("not json") == {}  # invalid -> ignored
+        assert _parse_extra_body("[1,2]") == {}  # non-object -> ignored
+
+
+class TestDealCoercion:
+    def test_list_and_loose_fields_are_coerced(self) -> None:
+        # A local model may ignore the schema and return lists / strings / bools.
+        data = {
+            "company": "Loose Co",
+            "traction": ["100 users", "first revenue"],  # list -> string
+            "sector": ["fintech", "ai"],
+            "valuation_cap": "$12M",  # string with units -> number
+            "round_size": "1,500,000",
+            "website": True,  # bogus -> None
+            "links": "https://x.example.com",  # string -> single-item list
+            "founders": [{"name": ["Ada", "Lovelace"], "role": "CEO"}, {"role": "CTO"}],
+        }
+        deal = _deal_from_dict(data, text="t", source=None)
+        assert isinstance(deal.traction, str) and "100 users" in deal.traction
+        assert isinstance(deal.sector, str)
+        assert deal.valuation_cap == 12_000_000
+        assert deal.round_size == 1_500_000
+        assert deal.website is None
+        assert deal.links == ["https://x.example.com"]
+        # founder with no name is dropped; list name is coerced to a string
+        assert [f.name for f in deal.founders] == ["Ada, Lovelace"]
+        # the rubric haystack join must not raise on the coerced deal
+        from presidio_angellist.triage.rubric import score_deal
+
+        sc = score_deal(deal)
+        assert sc.composite >= 0
