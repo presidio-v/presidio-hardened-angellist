@@ -18,9 +18,15 @@ from __future__ import annotations
 
 import contextlib
 import imaplib
+import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+_log = logging.getLogger("presidio_angellist")
 
 
 class ImapError(RuntimeError):
@@ -118,6 +124,19 @@ def _default_factory(config: ImapConfig) -> Callable[[], Any]:
     def make() -> Any:
         if config.use_ssl:
             return imaplib.IMAP4_SSL(config.host, config.port)
+        # Plaintext IMAP would send IMAP_USER/IMAP_PASSWORD in clear over the
+        # network. Refuse unless the operator explicitly opts in.
+        if not _env_bool("IMAP_ALLOW_INSECURE", default=False):
+            raise ImapError(
+                "refusing plaintext IMAP: credentials would be sent unencrypted. "
+                "Use IMAP_SSL=1 (recommended), or set IMAP_ALLOW_INSECURE=1 to override."
+            )
+        _log.warning(
+            "presidio_angellist: connecting to %s:%s over PLAINTEXT IMAP — "
+            "credentials are sent unencrypted (IMAP_ALLOW_INSECURE is set)",
+            config.host,
+            config.port,
+        )
         return imaplib.IMAP4(config.host, config.port)
 
     return make

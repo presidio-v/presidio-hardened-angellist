@@ -18,12 +18,14 @@ import logging
 import time
 from dataclasses import dataclass, field
 from email import message_from_bytes, policy
-from typing import TYPE_CHECKING, Any, Callable
+from typing import TYPE_CHECKING, Any
 
 from presidio_angellist.intake.imap import ImapError, fetch_imap
 from presidio_angellist.pipeline import triage_email
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from presidio_angellist.intake.imap import ImapConfig
     from presidio_angellist.llm import LLMClient
     from presidio_angellist.models import TriageResult

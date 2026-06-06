@@ -3,7 +3,7 @@
 [![CI](https://github.com/presidio-v/presidio-hardened-angellist/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-angellist/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/presidio-v/presidio-hardened-angellist/actions/workflows/codeql.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-angellist/actions/workflows/codeql.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
 Presidio security-hardened **deal-flow triage & due-diligence toolkit** for
 early-stage (pre-seed / seed) startups sourced via **AngelList syndicates**.
@@ -337,13 +337,18 @@ with DealStore() as store:                       # default path, or DealStore("d
 
 | Feature | What it does |
 |---|---|
-| **Strict TLS 1.2+ enforcement** | Rejects TLS 1.0/1.1; strong ciphers; `verify=True` always |
-| **HTTP → HTTPS auto-upgrade** | Insecure `http://` URLs are silently upgraded |
-| **API key / secret redaction** | Bearer tokens, `sk_live_*`, `sk-ant-*` keys scrubbed from logs |
+| **Strict TLS 1.2+ enforcement** | Rejects TLS 1.0/1.1; ephemeral-EC ciphers only; `verify=True` always |
+| **HTTP → HTTPS auto-upgrade** | Insecure `http://` URLs are silently upgraded; non-HTTP(S) schemes refused |
+| **SSRF guard** | Refuses targets resolving to loopback/private/link-local (incl. `169.254.169.254`)/reserved addresses |
+| **API key / secret redaction** | `RedactingFilter` on the `presidio_angellist` logger scrubs Bearer tokens, `sk_live_*` / `sk-ant-*` keys, and `access_token=`/`api_key=` from **every** log record |
+| **Retry with backoff** | Exponential backoff on connection errors / 429 / 5xx, honouring `Retry-After` |
 | **Per-host rate limiting** | Token-bucket limiter; prevents accidental DoS of enrichment hosts |
 | **Security event logging** | Structured logs for every hardening action (`presidio_angellist` logger) |
 
-Every outbound enrichment request goes through `HardenedSession`.
+Every outbound enrichment request goes through `HardenedSession`. Untrusted deal
+text sent to the optional LLM layer is fenced and the system prompt treats it as
+data, not instructions (prompt-injection defense); plaintext IMAP is refused unless
+explicitly opted in. See [SECURITY.md](SECURITY.md) for the full trust-boundary model.
 
 ---
 
@@ -357,7 +362,8 @@ Every outbound enrichment request goes through `HardenedSession`.
 | **0.5.0** | IMAP intake (`--imap`, key-gated) |
 | **0.5.1** | IMAP watch mode (`--watch`: interval polling, in-session dedup, auto-save) |
 | **0.5.2** | Better company/one-liner extraction (body cues); growth-stage out-of-scope detection |
-| **0.6.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
+| **0.6.0** | Security-hardening release: SSRF guard, sink-enforced log redaction, LLM prompt-injection defense, restored retry/backoff, plaintext-IMAP refusal, CVE-floored deps + `pip-audit` in CI |
+| **0.7.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
 
 ---
 

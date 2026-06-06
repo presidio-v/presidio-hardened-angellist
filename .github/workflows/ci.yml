@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +33,9 @@ jobs:
         run: |
           ruff format --check .
           ruff check .
+
+      - name: Audit dependencies for known CVEs
+        run: pip-audit
 
       - name: Run tests with coverage
         run: |

@@ -10,6 +10,7 @@ import pytest
 from presidio_angellist.intake.imap import (
     ImapConfig,
     ImapError,
+    _default_factory,
     _first_rfc822,
     fetch_imap,
     imap_config_from_env,
@@ -204,6 +205,39 @@ class TestConfigFromEnv:
         cfg = imap_config_from_env()
         assert cfg.use_ssl is False
         assert cfg.folder == "INBOX"
+
+
+class TestPlaintextRefusal:
+    def test_default_factory_refuses_plaintext(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("IMAP_ALLOW_INSECURE", raising=False)
+        make = _default_factory(_cfg(use_ssl=False))
+        with pytest.raises(ImapError, match="refusing plaintext IMAP"):
+            make()
+
+    def test_explicit_opt_in_allows_plaintext(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("IMAP_ALLOW_INSECURE", "1")
+        captured = {}
+
+        def fake_imap4(host: str, port: int):
+            captured["host"], captured["port"] = host, port
+            return object()
+
+        monkeypatch.setattr("presidio_angellist.intake.imap.imaplib.IMAP4", fake_imap4)
+        make = _default_factory(_cfg(use_ssl=False, host="mail", port=143))
+        make()
+        assert captured == {"host": "mail", "port": 143}
+
+    def test_ssl_factory_uses_imap4_ssl(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured = {}
+
+        def fake_ssl(host: str, port: int):
+            captured["host"], captured["port"] = host, port
+            return object()
+
+        monkeypatch.setattr("presidio_angellist.intake.imap.imaplib.IMAP4_SSL", fake_ssl)
+        make = _default_factory(_cfg(use_ssl=True, host="mail", port=993))
+        make()
+        assert captured == {"host": "mail", "port": 993}
 
 
 class TestTriageImap:
