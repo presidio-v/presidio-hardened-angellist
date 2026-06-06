@@ -21,7 +21,10 @@ import imaplib
 import logging
 import os
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 _log = logging.getLogger("presidio_angellist")
 

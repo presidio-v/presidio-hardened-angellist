@@ -38,7 +38,7 @@ security defaults with no changes to their calling code.
 
 ## Technical Requirements
 
-- Python 3.9+
+- Python 3.10+ (3.9 dropped in 0.6.0 — the urllib3 CVE fix requires ≥3.10; see below)
 - `pyproject.toml` + `hatchling` build backend
 - `src/presidio_angellist/__init__.py` layout — wrapper only, no copying of upstream source
 - High test coverage with `pytest` + `pytest-cov` (target ≥ 90%)
@@ -438,6 +438,12 @@ before the first PyPI publish.
   only (matching this doc). Added `pip-audit` to `[dev]` and a CI step; pinned
   `urllib3>=2.7.0` (PYSEC-2026-141/142), `idna>=3.15` (CVE-2026-45409),
   `requests>=2.32.0`.
+
+**Dropped Python 3.9.** `urllib3>=2.7.0` (the only fix for PYSEC-2026-141/142)
+requires Python ≥3.10, so supporting 3.9 would mean shipping a known-vulnerable
+urllib3 floor — self-defeating for a hardening release. Python 3.9 reached
+end-of-life in October 2025. `requires-python` is now `>=3.10`; the 3.9 classifier,
+ruff `target-version`, and the CI matrix entry were removed.
 
 **Delivered:**
 - `hardening.py`: `assert_public_host`/`SSRFError`, `RedactingFilter`/
