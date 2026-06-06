@@ -287,3 +287,54 @@ class TestScopeRendering:
         data = json.loads(capsys.readouterr().out)
         assert data["scorecard"]["scope_note"] is not None
         assert data["deal"]["company"] == "Campus"
+
+
+class TestNotify:
+    def _smtp_env(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANGELTRIAGE_SMTP_HOST", "smtp.example.com")
+        monkeypatch.setenv("ANGELTRIAGE_SMTP_USER", "sender@example.com")
+        monkeypatch.setenv("ANGELTRIAGE_SMTP_PASSWORD", "secret")
+        monkeypatch.setenv("ANGELTRIAGE_NOTIFY_TO", "a@example.com")
+
+    def test_notify_requires_save(self, capsys: pytest.CaptureFixture[str]) -> None:
+        rc = main([COMPLETE, "--no-llm", "--notify"])
+        assert rc == 2
+        assert "--notify requires --save" in capsys.readouterr().err
+
+    def test_notify_sends_new_deal(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._smtp_env(monkeypatch)
+        captured: list = []
+        monkeypatch.setattr(
+            "presidio_angellist.notify.send_notifications",
+            lambda cfg, results: (captured.extend(results), len(results))[1],
+        )
+        db = str(tmp_path / "d.db")
+        rc = main([COMPLETE, "--no-llm", "--save", "--notify", "--db", db])
+        assert rc == 0
+        assert len(captured) == 1  # one new deal emailed
+
+    def test_notify_skips_already_saved(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._smtp_env(monkeypatch)
+        calls: list = []
+        monkeypatch.setattr(
+            "presidio_angellist.notify.send_notifications",
+            lambda cfg, results: (calls.append(list(results)), len(results))[1],
+        )
+        db = str(tmp_path / "d.db")
+        main([COMPLETE, "--no-llm", "--save", "--notify", "--db", db])
+        main([COMPLETE, "--no-llm", "--save", "--notify", "--db", db])  # second run
+        assert calls[0] and calls[1] == []  # nothing new the second time
+
+    def test_notify_failure_exits_2(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._smtp_env(monkeypatch)
+        from presidio_angellist.notify import NotifyError
+
+        def boom(cfg: object, results: object) -> int:
+            raise NotifyError("smtp down")
+
+        monkeypatch.setattr("presidio_angellist.notify.send_notifications", boom)
+        db = str(tmp_path / "d.db")
+        rc = main([COMPLETE, "--no-llm", "--save", "--notify", "--db", db])
+        assert rc == 2

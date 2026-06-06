@@ -98,6 +98,12 @@ def _build_parser() -> argparse.ArgumentParser:
     # Deal queue (persistence)
     p.add_argument("--save", action="store_true", help="Persist triaged deals to the queue.")
     p.add_argument(
+        "--notify",
+        action="store_true",
+        help="Email each deal new to the store to ANGELTRIAGE_NOTIFY_TO (SMTP via "
+        "ANGELTRIAGE_SMTP_*). In --watch mode, save is implicit; otherwise requires --save.",
+    )
+    p.add_argument(
         "--db",
         metavar="FILE",
         default=None,
@@ -245,6 +251,12 @@ def _run_triage(args: argparse.Namespace) -> int:
     config, rc = _resolve_config(args)
     if rc:
         return rc
+    if args.notify and not args.save:
+        print(
+            "angeltriage: --notify requires --save (it emails deals new to the store)",
+            file=sys.stderr,
+        )
+        return 2
     llm = _make_llm(args)
 
     results: list[TriageResult] = []
@@ -292,7 +304,10 @@ def _run_triage(args: argparse.Namespace) -> int:
     # Rank highest-scoring first when triaging a batch.
     results.sort(key=lambda r: r.scorecard.composite, reverse=True)
 
-    save_note = _save_results(results, args) if args.save else None
+    save_note: str | None = None
+    new_results: list[TriageResult] = []
+    if args.save:
+        save_note, new_results = _save_results(results, args)
 
     if args.json:
         payload = [r.to_dict() for r in results]
@@ -301,6 +316,9 @@ def _run_triage(args: argparse.Namespace) -> int:
         print(_render(results))
         if save_note:
             print("\n" + save_note)
+
+    if args.notify:
+        return _send_notifications(new_results)
     return 0
 
 
@@ -345,11 +363,16 @@ def _run_watch(args: argparse.Namespace) -> int:
         file=sys.stderr,
     )
 
+    notify_failed = False
+
     def on_cycle(n: int, res: PollResult) -> None:
+        nonlocal notify_failed
         ts = datetime.now().strftime("%H:%M:%S")
         print(f"[{ts}] poll {n}: fetched {res.fetched}, new {res.new_saved}")
         for r in res.results:
             print(f"    + {r.deal.company}  [{r.scorecard.tier} · {r.scorecard.composite}]")
+        if args.notify and res.new_results and _send_notifications(res.new_results) != 0:
+            notify_failed = True
 
     def on_error(exc: Exception) -> None:
         print(f"angeltriage: poll error (continuing): {exc}", file=sys.stderr)
@@ -365,6 +388,7 @@ def _run_watch(args: argparse.Namespace) -> int:
                 config=config,
                 enrich=args.enrich,
                 memo=args.memo,
+                persist_processed=True,
                 on_cycle=on_cycle,
                 on_error=on_error,
             )
@@ -373,18 +397,41 @@ def _run_watch(args: argparse.Namespace) -> int:
         return 2
 
     print(f"angeltriage: stopped after saving {total} new deal(s).", file=sys.stderr)
-    return 0
+    return 2 if notify_failed else 0
 
 
-def _save_results(results: list[TriageResult], args: argparse.Namespace) -> str:
+def _save_results(
+    results: list[TriageResult], args: argparse.Namespace
+) -> tuple[str, list[TriageResult]]:
     db_path = _db_path(args)
-    new_count = 0
+    new_results: list[TriageResult] = []
     with DealStore(db_path) as store:
         for r in results:
             _, is_new = store.save(r)
-            new_count += int(is_new)
+            if is_new:
+                new_results.append(r)
+    new_count = len(new_results)
     updated = len(results) - new_count
-    return f"Saved {len(results)} deal(s) to {db_path} ({new_count} new, {updated} updated)."
+    note = f"Saved {len(results)} deal(s) to {db_path} ({new_count} new, {updated} updated)."
+    return note, new_results
+
+
+def _send_notifications(results: list[TriageResult]) -> int:
+    """Email new deals. Returns 0 on success/none, 2 on failure (already reported)."""
+    from presidio_angellist.notify import NotifyError, notify_config_from_env, send_notifications
+
+    try:
+        config = notify_config_from_env()
+        sent = send_notifications(config, results)
+    except NotifyError as exc:
+        print(f"angeltriage: notify failed: {exc}", file=sys.stderr)
+        return 2
+    if sent:
+        print(
+            f"angeltriage: emailed {sent} new deal(s) to {', '.join(config.recipients)}.",
+            file=sys.stderr,
+        )
+    return 0
 
 
 def _render(results: list[TriageResult]) -> str:

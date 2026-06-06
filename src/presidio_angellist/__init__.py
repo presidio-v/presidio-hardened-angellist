@@ -56,6 +56,12 @@ from presidio_angellist.models import (
     Scorecard,
     TriageResult,
 )
+from presidio_angellist.notify import (
+    NotifyConfig,
+    NotifyError,
+    notify_config_from_env,
+    send_notifications,
+)
 from presidio_angellist.pipeline import triage_csv, triage_deal, triage_email, triage_imap
 from presidio_angellist.rubric_config import (
     DEFAULT_CAP_CEILINGS,
@@ -108,6 +114,11 @@ __all__ = [
     "STATUSES",
     # enrichment
     "enrich_from_website",
+    # notify
+    "notify_config_from_env",
+    "send_notifications",
+    "NotifyConfig",
+    "NotifyError",
     # models
     "Deal",
     "Founder",
@@ -123,4 +134,4 @@ __all__ = [
     "RateLimiter",
 ]
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"

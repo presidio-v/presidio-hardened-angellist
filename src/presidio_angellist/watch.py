@@ -43,6 +43,7 @@ class PollResult:
     processed: int = 0  # newly triaged this cycle (not seen earlier this session)
     new_saved: int = 0  # of those, how many were new to the store
     results: list[TriageResult] = field(default_factory=list)
+    new_results: list[TriageResult] = field(default_factory=list)  # the new_saved subset
 
 
 def message_identity(raw: bytes) -> str:
@@ -66,14 +67,23 @@ def poll_once(
     config: RubricConfig | None = None,
     enrich: bool = False,
     memo: bool = False,
+    persist_processed: bool = False,
     connection_factory: Callable[[], Any] | None = None,
 ) -> PollResult:
-    """Run one fetch → triage (new-only) → save cycle. Mutates ``seen``."""
+    """Run one fetch → triage (new-only) → save cycle. Mutates ``seen``.
+
+    With ``persist_processed``, message identities are also recorded in the store
+    so a message triaged in an earlier *run* (not just this session) is skipped —
+    giving exactly-once processing for a daily one-shot.
+    """
     messages = fetch_imap(imap_config, connection_factory=connection_factory)
     result = PollResult(fetched=len(messages))
     for msg in messages:
         ident = message_identity(msg.raw)
         if ident in seen:
+            continue
+        if persist_processed and store.is_processed(ident):
+            seen.add(ident)
             continue
         seen.add(ident)
         triaged = triage_email(
@@ -85,9 +95,13 @@ def poll_once(
             config=config,
         )
         _, is_new = store.save(triaged)
+        if persist_processed:
+            store.mark_processed(ident)
         result.processed += 1
-        result.new_saved += int(is_new)
         result.results.append(triaged)
+        if is_new:
+            result.new_saved += 1
+            result.new_results.append(triaged)
     return result
 
 
@@ -105,6 +119,7 @@ def watch(
     config: RubricConfig | None = None,
     enrich: bool = False,
     memo: bool = False,
+    persist_processed: bool = False,
     connection_factory: Callable[[], Any] | None = None,
 ) -> int:
     """
@@ -131,6 +146,7 @@ def watch(
                     config=config,
                     enrich=enrich,
                     memo=memo,
+                    persist_processed=persist_processed,
                     connection_factory=connection_factory,
                 )
             except ImapError as exc:

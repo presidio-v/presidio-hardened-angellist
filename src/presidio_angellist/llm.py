@@ -19,14 +19,26 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 from typing import Any
 
 from presidio_angellist.models import Deal, Founder, Scorecard
 
 _log = logging.getLogger("presidio_angellist")
 
-# Default model. Opus 4.8 is the most capable; callers can override.
+# Default Anthropic model. Opus 4.8 is the most capable; callers can override.
 _DEFAULT_MODEL = "claude-opus-4-8"
+
+# Generic, provider-agnostic config (env-driven). Setting a base URL selects the
+# OpenAI-compatible backend (local models served by mlx_lm.server, Ollama,
+# vLLM, LM Studio, etc.); otherwise the Anthropic backend is used. The published
+# package ships these generic; a deployment supplies the concrete values.
+_ENV_PROVIDER = "ANGELTRIAGE_LLM_PROVIDER"  # "openai" | "anthropic"
+_ENV_BASE_URL = "ANGELTRIAGE_LLM_BASE_URL"  # e.g. http://127.0.0.1:8080/v1
+_ENV_MODEL = "ANGELTRIAGE_LLM_MODEL"
+_ENV_API_KEY = "ANGELTRIAGE_LLM_API_KEY"
+_ENV_TIMEOUT = "ANGELTRIAGE_LLM_TIMEOUT"
+_DEFAULT_OPENAI_TIMEOUT = 120.0
 
 # Untrusted-content boundary. Deal emails are attacker-influenced, so everything
 # in the user turn is wrapped in these tags and the system prompt is explicit that
@@ -124,22 +136,57 @@ class LLMUnavailableError(RuntimeError):
     """Raised when an LLM call is attempted without the SDK or an API key."""
 
 
+def _resolve_provider(provider: str | None, base_url: str | None) -> str:
+    """Pick the backend: explicit arg > env > infer from a configured base URL."""
+    chosen = provider or os.environ.get(_ENV_PROVIDER)
+    if chosen:
+        return chosen.strip().lower()
+    if base_url or os.environ.get(_ENV_BASE_URL):
+        return "openai"
+    return "anthropic"
+
+
 class LLMClient:
-    """Thin wrapper over the Anthropic SDK for extraction and memo drafting."""
+    """Extraction + memo drafting over either Anthropic or an OpenAI-compatible API.
+
+    With no configuration the Anthropic backend is used (key-gated as before).
+    Setting ``ANGELTRIAGE_LLM_BASE_URL`` (or passing ``base_url``) switches to the
+    OpenAI-compatible backend, which talks plain ``/v1/chat/completions`` to a
+    local or self-hosted model. Local endpoints are loopback, so these calls
+    deliberately do **not** go through ``HardenedSession`` (whose SSRF guard would
+    otherwise refuse 127.0.0.1).
+    """
 
     def __init__(
         self,
         api_key: str | None = None,
-        model: str = _DEFAULT_MODEL,
+        model: str | None = None,
         effort: str = "high",
+        *,
+        base_url: str | None = None,
+        provider: str | None = None,
+        timeout: float | None = None,
     ) -> None:
-        self._api_key = api_key
-        self._model = model
+        self._provider = _resolve_provider(provider, base_url)
         self._effort = effort
         self._client: Any = None
+        if self._provider == "openai":
+            self._base_url = (base_url or os.environ.get(_ENV_BASE_URL) or "").rstrip("/")
+            self._model = model or os.environ.get(_ENV_MODEL) or ""
+            self._api_key = api_key or os.environ.get(_ENV_API_KEY) or "not-needed"
+            self._timeout = timeout or float(
+                os.environ.get(_ENV_TIMEOUT) or _DEFAULT_OPENAI_TIMEOUT
+            )
+        else:
+            self._base_url = ""
+            self._api_key = api_key
+            self._model = model or _DEFAULT_MODEL
+            self._timeout = timeout or _DEFAULT_OPENAI_TIMEOUT
 
     def available(self) -> bool:
-        """True when the SDK is importable and an API key is resolvable."""
+        """True when the selected backend is usable (configured / importable)."""
+        if self._provider == "openai":
+            return bool(self._base_url and self._model)
         try:
             import anthropic  # noqa: F401
         except ImportError:
@@ -168,7 +215,12 @@ class LLMClient:
     # ------------------------------------------------------------------
 
     def extract_deal(self, text: str, source: str | None = None) -> Deal:
-        """Extract a :class:`Deal` from raw email text using structured outputs."""
+        """Extract a :class:`Deal` from raw email text (backend-dependent)."""
+        if self._provider == "openai":
+            return self._openai_extract(text, source)
+        return self._anthropic_extract(text, source)
+
+    def _anthropic_extract(self, text: str, source: str | None) -> Deal:
         client = self._ensure_client()
         resp = client.messages.create(
             model=self._model,
@@ -197,7 +249,12 @@ class LLMClient:
     # ------------------------------------------------------------------
 
     def write_memo(self, deal: Deal, scorecard: Scorecard) -> str:
-        """Draft a qualitative investment memo for a scored deal."""
+        """Draft a qualitative investment memo for a scored deal (backend-dependent)."""
+        if self._provider == "openai":
+            return self._openai_memo(deal, scorecard)
+        return self._anthropic_memo(deal, scorecard)
+
+    def _anthropic_memo(self, deal: Deal, scorecard: Scorecard) -> str:
         client = self._ensure_client()
         context = json.dumps(
             {"deal": deal.to_dict(), "scorecard": scorecard.to_dict()},
@@ -226,6 +283,102 @@ class LLMClient:
         )
         _log_usage(resp)
         return _first_text(resp).strip()
+
+    # ------------------------------------------------------------------
+    # OpenAI-compatible backend (local / self-hosted models)
+    # ------------------------------------------------------------------
+
+    def _openai_extract(self, text: str, source: str | None) -> Deal:
+        system = (
+            _EXTRACTION_SYSTEM
+            + " Respond with ONLY a single JSON object (no prose, no markdown fences) "
+            "with these keys: " + ", ".join(_DEAL_SCHEMA["properties"].keys()) + ". "
+            "Use null for unknown scalar fields and [] for unknown arrays. "
+            "'founders' is a list of {name, role} objects; 'links' is a list of strings."
+        )
+        content = self._openai_chat(system, _wrap_untrusted(text), max_tokens=2048)
+        data = _parse_json_object(content)
+        return _deal_from_dict(data, text=text, source=source)
+
+    def _openai_memo(self, deal: Deal, scorecard: Scorecard) -> str:
+        context = json.dumps(
+            {"deal": deal.to_dict(), "scorecard": scorecard.to_dict()},
+            indent=2,
+            sort_keys=True,
+        )
+        content = self._openai_chat(
+            _MEMO_SYSTEM,
+            "Write the triage memo for this deal:\n\n" + _wrap_untrusted(context),
+            max_tokens=2048,
+        )
+        return content.strip()
+
+    def _openai_chat(self, system: str, user: str, *, max_tokens: int) -> str:
+        """POST a chat completion to the configured OpenAI-compatible endpoint.
+
+        Uses plain ``requests`` (not ``HardenedSession``): local endpoints are
+        loopback, which the SSRF guard correctly refuses.
+        """
+        import requests
+
+        url = f"{self._base_url}/chat/completions"
+        payload = {
+            "model": self._model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": 0.2,
+            "stream": False,
+        }
+        headers = {
+            "Authorization": f"Bearer {self._api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            resp = requests.post(url, json=payload, headers=headers, timeout=self._timeout)
+            resp.raise_for_status()
+            data = resp.json()
+        except requests.exceptions.RequestException as exc:
+            raise LLMUnavailableError(f"local LLM request failed: {exc}") from exc
+        _log_openai_usage(data)
+        try:
+            return data["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise LLMUnavailableError(f"unexpected LLM response shape: {exc}") from exc
+
+
+_JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)
+
+
+def _parse_json_object(content: str) -> dict[str, Any]:
+    """Parse a JSON object from a model reply, tolerating fences and surrounding prose."""
+    cleaned = _JSON_FENCE_RE.sub("", content).strip()
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        start, end = cleaned.find("{"), cleaned.rfind("}")
+        if start == -1 or end <= start:
+            raise LLMUnavailableError("LLM did not return a JSON object") from None
+        try:
+            parsed = json.loads(cleaned[start : end + 1])
+        except json.JSONDecodeError as exc:
+            raise LLMUnavailableError(f"could not parse LLM JSON: {exc}") from exc
+    if not isinstance(parsed, dict):
+        raise LLMUnavailableError("LLM JSON was not an object")
+    return parsed
+
+
+def _log_openai_usage(data: dict[str, Any]) -> None:
+    usage = data.get("usage") if isinstance(data, dict) else None
+    if usage:
+        _log.debug(
+            "presidio_angellist: LLM usage prompt=%s completion=%s total=%s",
+            usage.get("prompt_tokens", "?"),
+            usage.get("completion_tokens", "?"),
+            usage.get("total_tokens", "?"),
+        )
 
 
 def _first_text(resp: Any) -> str:

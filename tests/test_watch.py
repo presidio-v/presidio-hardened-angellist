@@ -146,3 +146,39 @@ class TestWatchLoop:
             assert len(store.list()) == 2
         assert len(errors) == 1  # cycle 2 error reported, loop continued
         assert total == 2  # cycle 1 (A) + cycle 3 (B) saved
+
+
+class TestPersistProcessed:
+    def test_skips_processed_across_runs(self, tmp_path: Path) -> None:
+        path = tmp_path / "d.db"
+        with DealStore(path) as store:
+            r1 = poll_once(
+                _cfg(),
+                store,
+                seen=set(),
+                persist_processed=True,
+                connection_factory=lambda: FakeIMAP([RAW_A]),
+            )
+        assert r1.processed == 1 and r1.new_saved == 1 and len(r1.new_results) == 1
+        # Fresh session (new seen set); the message must be skipped via the store.
+        with DealStore(path) as store:
+            r2 = poll_once(
+                _cfg(),
+                store,
+                seen=set(),
+                persist_processed=True,
+                connection_factory=lambda: FakeIMAP([RAW_A]),
+            )
+        assert r2.fetched == 1 and r2.processed == 0 and r2.new_results == []
+
+    def test_new_results_track_new_saved(self, tmp_path: Path) -> None:
+        with DealStore(tmp_path / "d.db") as store:
+            res = poll_once(
+                _cfg(),
+                store,
+                seen=set(),
+                persist_processed=True,
+                connection_factory=lambda: FakeIMAP([RAW_A, RAW_B]),
+            )
+        assert len(res.results) == 2
+        assert len(res.new_results) == res.new_saved
