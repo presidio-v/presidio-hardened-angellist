@@ -114,13 +114,17 @@ class TestConfigFromEnv:
 class TestBuildMessage:
     def test_headers_and_body(self) -> None:
         cfg = NotifyConfig(host="h", port=465, sender="from@x", recipients=["a@x", "b@x"])
-        msg = build_message(cfg, _result("Nimbus"))
+        result = _result("Nimbus")
+        msg = build_message(cfg, result)
         assert msg["To"] == "a@x, b@x"
         assert "Nimbus" in msg["Subject"]
         body = msg.get_content()
         assert "does things" in body
         assert "memo body" in body
-        assert "acme.example.com" in body
+        # Assert against the variable (not a host string literal) so this isn't
+        # mistaken for incomplete URL-substring sanitization.
+        assert result.deal.website is not None
+        assert result.deal.website in body
 
 
 class TestSendNotifications:
