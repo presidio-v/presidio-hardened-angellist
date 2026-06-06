@@ -135,3 +135,98 @@ class TestPromptInjectionDefense:
         client.extract_deal("hello", source=None)
         system = client._client.messages.last_kwargs["system"][0]["text"]
         assert "untrusted" in system.lower() and "instruction" in system.lower()
+
+
+import responses as rsps_lib  # noqa: E402
+
+from presidio_angellist.llm import _parse_json_object, _resolve_provider  # noqa: E402
+
+
+class TestProviderResolution:
+    def test_explicit_arg_wins(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ANGELTRIAGE_LLM_PROVIDER", raising=False)
+        assert _resolve_provider("openai", None) == "openai"
+
+    def test_env_provider(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ANGELTRIAGE_LLM_PROVIDER", "OpenAI")
+        assert _resolve_provider(None, None) == "openai"
+
+    def test_base_url_infers_openai(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ANGELTRIAGE_LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("ANGELTRIAGE_LLM_BASE_URL", raising=False)
+        assert _resolve_provider(None, "http://x/v1") == "openai"
+
+    def test_default_anthropic(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("ANGELTRIAGE_LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("ANGELTRIAGE_LLM_BASE_URL", raising=False)
+        assert _resolve_provider(None, None) == "anthropic"
+
+
+class TestParseJsonObject:
+    def test_plain(self) -> None:
+        assert _parse_json_object('{"a": 1}') == {"a": 1}
+
+    def test_fenced(self) -> None:
+        assert _parse_json_object('```json\n{"a": 1}\n```') == {"a": 1}
+
+    def test_surrounding_prose(self) -> None:
+        assert _parse_json_object('Sure! {"a": 1} done.') == {"a": 1}
+
+    def test_not_json_raises(self) -> None:
+        with pytest.raises(LLMUnavailableError):
+            _parse_json_object("no json here")
+
+    def test_non_object_raises(self) -> None:
+        with pytest.raises(LLMUnavailableError):
+            _parse_json_object("[1, 2, 3]")
+
+
+def _openai_client() -> LLMClient:
+    return LLMClient(base_url="http://local-llm/v1", model="qwen", api_key="dummy")
+
+
+class TestOpenAIBackend:
+    def test_available_when_configured(self) -> None:
+        assert _openai_client().available() is True
+
+    def test_unavailable_without_model(self) -> None:
+        assert LLMClient(base_url="http://local-llm/v1", model="").available() is False
+
+    @rsps_lib.activate
+    def test_extract_deal(self) -> None:
+        payload = json.dumps({"company": "Orbit", "valuation_cap": 8_000_000, "founders": []})
+        rsps_lib.add(
+            rsps_lib.POST,
+            "http://local-llm/v1/chat/completions",
+            json={"choices": [{"message": {"content": payload}}], "usage": {}},
+            status=200,
+        )
+        deal = _openai_client().extract_deal("raw email", source="imap:1")
+        assert deal.company == "Orbit"
+        assert deal.valuation_cap == 8_000_000
+        assert deal.extraction_method == "llm"
+        # untrusted text is fenced in the outgoing request
+        body = json.loads(rsps_lib.calls[0].request.body)
+        assert "<untrusted_deal_content>" in body["messages"][1]["content"]
+
+    @rsps_lib.activate
+    def test_write_memo(self) -> None:
+        from presidio_angellist.models import Scorecard
+
+        rsps_lib.add(
+            rsps_lib.POST,
+            "http://local-llm/v1/chat/completions",
+            json={"choices": [{"message": {"content": "  the local memo  "}}]},
+            status=200,
+        )
+        memo = _openai_client().write_memo(
+            _deal_from_dict({"company": "X"}, text="t", source=None),
+            Scorecard(dimensions=[]),
+        )
+        assert memo == "the local memo"
+
+    @rsps_lib.activate
+    def test_request_failure_raises(self) -> None:
+        rsps_lib.add(rsps_lib.POST, "http://local-llm/v1/chat/completions", status=500)
+        with pytest.raises(LLMUnavailableError, match="local LLM request failed"):
+            _openai_client().extract_deal("raw", source=None)

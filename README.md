@@ -294,6 +294,58 @@ with DealStore() as store:
 
 ---
 
+## Local / self-hosted LLM
+
+By default the LLM layer uses Anthropic (`ANTHROPIC_API_KEY`). To run against a
+**local or self-hosted** OpenAI-compatible model instead (mlx_lm.server, Ollama,
+vLLM, LM Studio…), set a base URL — that alone switches backends:
+
+```bash
+export ANGELTRIAGE_LLM_BASE_URL=http://127.0.0.1:8080/v1
+export ANGELTRIAGE_LLM_MODEL=my-local-model
+export ANGELTRIAGE_LLM_API_KEY=not-needed     # optional; many local servers ignore it
+export ANGELTRIAGE_LLM_TIMEOUT=120            # optional, seconds
+```
+
+| Env var | Purpose |
+|---|---|
+| `ANGELTRIAGE_LLM_BASE_URL` | OpenAI-compatible base (e.g. `…/v1`); **set this to use a local model** |
+| `ANGELTRIAGE_LLM_MODEL` | Model id the server expects |
+| `ANGELTRIAGE_LLM_API_KEY` | Optional bearer token (default `not-needed`) |
+| `ANGELTRIAGE_LLM_PROVIDER` | Optional, `openai`/`anthropic` to force a backend |
+
+Local endpoints are usually loopback, which the enrichment SSRF guard refuses — so
+LLM calls deliberately bypass that guard. Point it only at a server you control
+([SECURITY.md](SECURITY.md)). If the model is unreachable, triage degrades to
+deterministic scoring + a templated memo rather than failing.
+
+---
+
+## Email notifications (`--notify`)
+
+`--notify` emails each deal **new to the store** to a recipient list over SMTP —
+ideal for a daily unattended run. Config is environment-only:
+
+```bash
+export ANGELTRIAGE_SMTP_HOST=smtp.example.com
+export ANGELTRIAGE_SMTP_PORT=465              # 465 = implicit TLS; else STARTTLS
+export ANGELTRIAGE_SMTP_USER=you@example.com
+export ANGELTRIAGE_SMTP_PASSWORD=…            # app-specific password
+export ANGELTRIAGE_SMTP_FROM=you@example.com  # optional, defaults to USER
+export ANGELTRIAGE_NOTIFY_TO="a@example.com, b@example.com"
+
+# daily one-shot: poll the al folder once, triage, save, email new deals
+angeltriage --watch --max-cycles 1 --imap-folder al --notify
+```
+
+`--notify` requires a store (implicit under `--watch`; pass `--save` otherwise) and
+only emails genuinely new deals — so a read-only mailbox re-fetch won't re-send.
+With `--watch --max-cycles 1`, a persisted `processed_messages` table ensures each
+message is triaged **exactly once** across daily runs. Send failures are loud
+(non-zero exit), so a deal is never silently dropped.
+
+---
+
 ## Deal queue (persistence)
 
 `--save` persists triaged deals to a local SQLite store so triage becomes a
@@ -363,7 +415,8 @@ explicitly opted in. See [SECURITY.md](SECURITY.md) for the full trust-boundary 
 | **0.5.1** | IMAP watch mode (`--watch`: interval polling, in-session dedup, auto-save) |
 | **0.5.2** | Better company/one-liner extraction (body cues); growth-stage out-of-scope detection |
 | **0.6.0** | Security-hardening release: SSRF guard, sink-enforced log redaction, LLM prompt-injection defense, restored retry/backoff, plaintext-IMAP refusal, CVE-floored deps + `pip-audit` in CI |
-| **0.7.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
+| **0.7.0** | Local/self-hosted LLM backend (OpenAI-compatible), SMTP deal notifications (`--notify`), exactly-once polling (`processed_messages`) |
+| **0.8.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
 
 ---
 

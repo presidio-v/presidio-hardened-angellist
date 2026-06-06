@@ -150,3 +150,25 @@ class TestStatusOps:
             assert data["company"] == "A"
             assert data["status"] == "new"
             assert "times_seen" in data
+
+
+class TestProcessedMessages:
+    def test_mark_then_is_processed(self, tmp_path: Path) -> None:
+        with DealStore(tmp_path / "d.db") as store:
+            assert store.is_processed("<m1@x>") is False
+            store.mark_processed("<m1@x>")
+            assert store.is_processed("<m1@x>") is True
+
+    def test_mark_is_idempotent(self, tmp_path: Path) -> None:
+        with DealStore(tmp_path / "d.db") as store:
+            store.mark_processed("<m1@x>")
+            store.mark_processed("<m1@x>")  # must not raise on duplicate PK
+            assert store.is_processed("<m1@x>") is True
+
+    def test_persists_across_reopen(self, tmp_path: Path) -> None:
+        path = tmp_path / "d.db"
+        with DealStore(path) as store:
+            store.mark_processed("<m1@x>")
+        with DealStore(path) as store:
+            assert store.is_processed("<m1@x>") is True
+            assert store.is_processed("<other@x>") is False

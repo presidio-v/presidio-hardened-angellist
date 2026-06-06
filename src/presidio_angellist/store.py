@@ -56,6 +56,11 @@ CREATE TABLE IF NOT EXISTS deals (
     last_seen      TEXT NOT NULL,
     times_seen     INTEGER NOT NULL DEFAULT 1
 );
+
+CREATE TABLE IF NOT EXISTS processed_messages (
+    message_id   TEXT PRIMARY KEY,
+    processed_at TEXT NOT NULL
+);
 """
 
 
@@ -230,6 +235,23 @@ class DealStore:
         saved = self.get(row_id)
         assert saved is not None  # just written
         return saved, is_new
+
+    # -- processed-message dedup (exactly-once polling) ------------------
+
+    def is_processed(self, message_id: str) -> bool:
+        """True if ``message_id`` has already been triaged in a previous run."""
+        row = self._conn.execute(
+            "SELECT 1 FROM processed_messages WHERE message_id = ?", (message_id,)
+        ).fetchone()
+        return row is not None
+
+    def mark_processed(self, message_id: str) -> None:
+        """Record ``message_id`` as triaged so later runs skip it. Idempotent."""
+        self._conn.execute(
+            "INSERT OR IGNORE INTO processed_messages (message_id, processed_at) VALUES (?, ?)",
+            (message_id, _now()),
+        )
+        self._conn.commit()
 
     def set_status(self, deal_id: int, status: str) -> SavedDeal:
         """Set the workflow status of a deal. Raises on unknown id or status."""

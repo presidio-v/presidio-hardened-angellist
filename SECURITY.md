@@ -4,11 +4,12 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.6.x   | ✅ Yes (latest 0.6.0) |
-| 0.5.x   | ⚠️ Superseded — upgrade to 0.6.x (SSRF + CVE fixes) |
-| 0.4.x   | ⚠️ Superseded — upgrade to 0.6.x |
-| 0.3.x   | ⚠️ Superseded — upgrade to 0.6.x |
-| 0.2.x   | ⚠️ Superseded — upgrade to 0.6.x |
+| 0.7.x   | ✅ Yes (latest 0.7.0) |
+| 0.6.x   | ✅ Yes |
+| 0.5.x   | ⚠️ Superseded — upgrade to 0.7.x (SSRF + CVE fixes) |
+| 0.4.x   | ⚠️ Superseded — upgrade to 0.7.x |
+| 0.3.x   | ⚠️ Superseded — upgrade to 0.7.x |
+| 0.2.x   | ⚠️ Superseded — upgrade to 0.7.x |
 | 0.1.x   | ❌ No (wrapped the now-defunct AngelList API) |
 
 ## Reporting a Vulnerability
@@ -78,15 +79,26 @@ boundaries:
   validated (`config.load_weights`): unknown dimensions, negative / non-numeric /
   boolean values, non-object JSON, and an all-zero set are rejected with a clear
   error rather than silently degrading scoring.
-- **LLM calls are opt-in, key-gated, and injection-hardened.** The Claude
-  extraction/memo steps run only when `ANTHROPIC_API_KEY` is set and the optional
-  `[llm]` extra is installed. The key is read from the environment — **never passed
-  on the command line** — and is covered by the `sk-ant-*` redaction rule. Because
-  deal text is untrusted, it is wrapped in a delimited `<untrusted_deal_content>`
-  block (with any nested delimiter stripped) and the system prompt instructs the
-  model to treat that content strictly as data, never as instructions — a
-  prompt-injection defense. Residual prompt-injection risk is inherent to LLMs;
-  treat generated memos as advisory, not authoritative.
+- **LLM calls are opt-in, key-gated, and injection-hardened.** The
+  extraction/memo steps run only when an LLM backend is configured. With Anthropic,
+  `ANTHROPIC_API_KEY` is read from the environment — **never passed on the command
+  line** — and covered by the `sk-ant-*` redaction rule. Because deal text is
+  untrusted, it is wrapped in a delimited `<untrusted_deal_content>` block (with any
+  nested delimiter stripped) and the system prompt instructs the model to treat that
+  content strictly as data, never as instructions. Residual prompt-injection risk is
+  inherent to LLMs; treat generated memos as advisory, not authoritative.
+- **Local/self-hosted LLM endpoints bypass the SSRF guard by design.** Setting
+  `ANGELTRIAGE_LLM_BASE_URL` selects an OpenAI-compatible backend that talks plain
+  `/v1/chat/completions`. These endpoints are typically loopback (`127.0.0.1`),
+  which the enrichment SSRF guard correctly refuses — so the LLM client uses a
+  direct `requests` call instead of `HardenedSession`. This is safe because the
+  endpoint is an **explicitly operator-configured, trusted address**, not a value
+  derived from untrusted deal content. Point it only at a model server you control.
+- **SMTP notification credentials are environment-only.** `--notify` reads
+  `ANGELTRIAGE_SMTP_*` (host/port/user/password/from) and `ANGELTRIAGE_NOTIFY_TO`
+  from the environment — never the command line — and connects over implicit TLS
+  (port 465) or STARTTLS. Deal data (which may include attacker-influenced text) is
+  emailed to the configured recipients only; keep that list trusted.
 - **The deal queue is a local store.** `--save` writes triaged deals to a local
   SQLite file (`~/.angeltriage/deals.db` by default, parameterized via `--db` /
   `ANGELTRIAGE_DB`). It contains deal data at rest, holds **no secrets/API keys**,

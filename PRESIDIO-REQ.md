@@ -114,7 +114,8 @@ security defaults with no changes to their calling code.
 | **0.5.1** | IMAP watch mode (`--watch`: interval polling, in-session dedup, auto-save) |
 | **0.5.2** | Better company/one-liner extraction (body cues); growth-stage out-of-scope detection |
 | **0.6.0** | Security-hardening release: SSRF guard, sink-enforced log redaction, LLM prompt-injection defense, restored retry/backoff, plaintext-IMAP refusal, CVE-floored deps + `pip-audit` in CI |
-| **0.7.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
+| **0.7.0** | Local/self-hosted LLM backend (OpenAI-compatible), SMTP deal notifications (`--notify`), exactly-once polling via a persisted `processed_messages` table |
+| **0.8.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
 | _superseded_ | (pre-pivot 0.2/0.3: `AsyncAngelListClient`, cert pinning, Pydantic models, pagination — dropped with the API client) |
 
 ---
@@ -453,6 +454,47 @@ ruff `target-version`, and the CI matrix entry were removed.
 - `pyproject.toml`: CVE-floored deps, `pip-audit` dev dep; `ci.yml`: `pip-audit` step
 - Tests extended (231 total); coverage ~96%; ruff clean; `pip-audit` clean;
   version → 0.6.0
+
+### v0.7.0 — Local LLM, notifications, exactly-once intake (2026-06-06)
+
+Driven by a concrete deployment: poll an `al` IMAP subfolder once a day, triage
+each new deal with a **local** model (no per-call API cost or data egress), email
+each new deal to a small recipient list, and persist to the queue — run unattended
+via a launchd agent.
+
+**Scope decisions:**
+
+- **Provider-agnostic LLM, shipped generic.** `llm.py` gains an OpenAI-compatible
+  backend (`/v1/chat/completions`) selected by env: setting
+  `ANGELTRIAGE_LLM_BASE_URL` (+ `_MODEL`, optional `_API_KEY`, `_TIMEOUT`) switches
+  off Anthropic. The published package carries no machine-specific endpoint; the
+  deployment supplies it. Targets any OpenAI-compatible server (mlx_lm.server,
+  Ollama, vLLM, LM Studio). The extraction path is reworked off Anthropic's
+  `json_schema` structured output — the system prompt requests a bare JSON object
+  and `_parse_json_object` tolerates fences/prose. Memo is plain chat.
+- **Local endpoints bypass the SSRF guard deliberately.** Local model servers are
+  loopback (`127.0.0.1`), which the 0.6.0 SSRF guard correctly refuses. The LLM
+  client therefore uses plain `requests`, not `HardenedSession` — the endpoint is
+  an explicitly-configured, operator-trusted address, not attacker-influenced.
+- **SMTP notifications (`--notify`).** A new `notify.py` emails each deal *new to
+  the store* to `ANGELTRIAGE_NOTIFY_TO` over SMTP (`ANGELTRIAGE_SMTP_*`,
+  env-only — never the command line, consistent with IMAP/API-key handling).
+  Notification keys off `store.save`'s `is_new`, so a deal is emailed once even
+  though read-only IMAP re-fetches. Failures are loud (`NotifyError` → exit 2) so
+  an unattended run never silently drops a deal. Triage already degrades to
+  deterministic scoring + a templated memo if the LLM is unreachable.
+- **Exactly-once intake.** A `processed_messages` table (keyed by `Message-ID`,
+  else content hash) persists which mails have been triaged, so a daily one-shot
+  (`--watch --max-cycles 1 --notify`) processes each `al` message exactly once
+  across runs without marking server-side state or mutating the mailbox. The
+  store's deal-dedup still collapses the same company arriving from two syndicates.
+
+**Delivered in v0.7.0:**
+- `llm.py` OpenAI-compatible backend + `_parse_json_object`; provider resolution
+- `notify.py` — `NotifyConfig`, `notify_config_from_env`, `send_notifications`; `--notify`
+- `store.py` — `processed_messages` + `is_processed`/`mark_processed`
+- `watch.py` — `persist_processed`, `PollResult.new_results`; CLI wires both
+- Tests extended (264 total); coverage ~95%; ruff + pip-audit clean; version → 0.7.0
 
 ## SDLC
 
