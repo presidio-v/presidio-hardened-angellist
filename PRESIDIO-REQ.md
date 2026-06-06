@@ -14,10 +14,14 @@ security defaults with no changes to their calling code.
 
 - **Strict TLS 1.2+ enforcement** — Rejects TLS 1.0/1.1; enforces strong cipher suites
   (`ECDH+AESGCM`, `ECDH+CHACHA20`, etc.); `verify=True` always; `check_hostname=True`
-- **HTTP → HTTPS auto-upgrade** — Insecure `http://` base URLs silently upgraded to HTTPS
-- **API key / secret redaction** — Bearer tokens, `sk_live_*` keys, `access_token=`,
-  `api_key=`, and `Authorization:` headers are scrubbed from all log output before
-  reaching any log sink
+- **HTTP → HTTPS auto-upgrade** — Insecure `http://` base URLs silently upgraded to HTTPS;
+  non-HTTP(S) schemes refused
+- **SSRF guard** — Outbound targets resolving to loopback/private/link-local (incl.
+  `169.254.169.254`)/reserved/multicast/unspecified addresses are refused, bounding the
+  attacker-influenced enrichment URL
+- **API key / secret redaction** — Bearer tokens, `sk_live_*` / `sk-ant-*` keys,
+  `access_token=`, `api_key=`, and `Authorization:` headers are scrubbed from all log
+  output at the sink via a `RedactingFilter` installed on the `presidio_angellist` logger
 - **Per-host rate limiting** — Token-bucket limiter (`RateLimiter`) with configurable
   req/s cap; prevents accidental DoS against the AngelList API
 - **Retry with exponential backoff** — Retries on 5xx and connection errors; raises
@@ -109,7 +113,8 @@ security defaults with no changes to their calling code.
 | **0.5.0** | IMAP intake (`--imap`, key-gated) |
 | **0.5.1** | IMAP watch mode (`--watch`: interval polling, in-session dedup, auto-save) |
 | **0.5.2** | Better company/one-liner extraction (body cues); growth-stage out-of-scope detection |
-| **0.6.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
+| **0.6.0** | Security-hardening release: SSRF guard, sink-enforced log redaction, LLM prompt-injection defense, restored retry/backoff, plaintext-IMAP refusal, CVE-floored deps + `pip-audit` in CI |
+| **0.7.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
 | _superseded_ | (pre-pivot 0.2/0.3: `AsyncAngelListClient`, cert pinning, Pydantic models, pagination — dropped with the API client) |
 
 ---
@@ -396,6 +401,52 @@ misleading "Track 56.5".
 - Verified: Campus → company "Campus", real one-liner, "Out of scope"; Nimbus
   (real pre-seed) still "Strong lead 83.0", not flagged
 - Tests extended (202 total); ruff clean; version → 0.5.2
+
+### v0.6.0 — Security-hardening release (2026-06-06)
+
+A pre-PyPI security audit of the post-pivot toolkit (now a deal-flow triage tool
+ingesting untrusted email/CSV/IMAP and fetching attacker-influenced URLs) found
+that several commitments in SECURITY.md/PRESIDIO-REQ.md had drifted from the code
+during the pivot, plus CVE-vulnerable dependency floors. 0.6.0 closes all of them
+before the first PyPI publish.
+
+**Findings remediated:**
+
+- **SSRF (HIGH).** `enrich_from_website` fetched the email-supplied `deal.website`
+  with no address validation, and the "HTTP→HTTPS upgrade" actually helped an
+  attacker reach internal HTTPS targets. Added `assert_public_host` + an
+  `SSRFError`-raising guard in `HardenedSession.request`: IP literals and *every*
+  resolved address must be public; non-HTTP(S) schemes refused. Unresolvable hosts
+  pass through (no address to attack; connection fails naturally). *Residual:*
+  DNS-rebinding by an attacker controlling authoritative DNS — documented in
+  SECURITY.md with the egress-restriction guidance.
+- **Log redaction not enforced at the sink (MED).** `SecretRedactor` was only
+  called manually in one spot. Added `RedactingFilter` (a `logging.Filter`),
+  installed on the `presidio_angellist` logger at import via `install_log_redaction`
+  (idempotent), so every record is scrubbed before any handler sees it. Broadened
+  the `sk-ant-*` pattern to redact the whole token.
+- **LLM prompt injection (MED).** Untrusted deal text is now fenced in a
+  `<untrusted_deal_content>` block (nested delimiters stripped) and both system
+  prompts instruct the model to treat that content as data, never instructions.
+- **Retry/backoff/429 dropped during the pivot (MED).** Re-implemented on
+  `HardenedSession`: exponential backoff on connection errors/timeouts and HTTP
+  429/502/503/504, honouring `Retry-After` (delta-seconds or HTTP-date).
+- **Plaintext IMAP credential transport (LOW).** `IMAP_SSL=0` now refuses to connect
+  (credentials would be sent in clear) unless `IMAP_ALLOW_INSECURE=1` is set, which
+  also logs a loud warning.
+- **Weak DH ciphers / missing dep audit (LOW).** Cipher list narrowed to ephemeral-EC
+  only (matching this doc). Added `pip-audit` to `[dev]` and a CI step; pinned
+  `urllib3>=2.7.0` (PYSEC-2026-141/142), `idna>=3.15` (CVE-2026-45409),
+  `requests>=2.32.0`.
+
+**Delivered:**
+- `hardening.py`: `assert_public_host`/`SSRFError`, `RedactingFilter`/
+  `install_log_redaction`, retry/backoff + `Retry-After` parsing, EC-only ciphers
+- `llm.py`: `_wrap_untrusted` + injection-guarded system prompts
+- `intake/imap.py`: plaintext refusal with explicit opt-in
+- `pyproject.toml`: CVE-floored deps, `pip-audit` dev dep; `ci.yml`: `pip-audit` step
+- Tests extended (231 total); coverage ~96%; ruff clean; `pip-audit` clean;
+  version → 0.6.0
 
 ## SDLC
 

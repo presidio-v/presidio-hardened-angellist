@@ -34,6 +34,9 @@ jobs:
           ruff format --check .
           ruff check .
 
+      - name: Audit dependencies for known CVEs
+        run: pip-audit
+
       - name: Run tests with coverage
         run: |
           pytest -v --cov=presidio_angellist --cov-report=term-missing --cov-report=xml
