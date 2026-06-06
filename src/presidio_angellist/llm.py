@@ -38,7 +38,26 @@ _ENV_BASE_URL = "ANGELTRIAGE_LLM_BASE_URL"  # e.g. http://127.0.0.1:8080/v1
 _ENV_MODEL = "ANGELTRIAGE_LLM_MODEL"
 _ENV_API_KEY = "ANGELTRIAGE_LLM_API_KEY"
 _ENV_TIMEOUT = "ANGELTRIAGE_LLM_TIMEOUT"
+# Extra JSON merged into the chat-completions request body — for server-specific
+# params the OpenAI schema doesn't cover, e.g. disabling a reasoning model's
+# thinking: {"chat_template_kwargs": {"enable_thinking": false}}.
+_ENV_EXTRA_BODY = "ANGELTRIAGE_LLM_EXTRA_BODY"
 _DEFAULT_OPENAI_TIMEOUT = 120.0
+
+
+def _parse_extra_body(raw: str | None) -> dict[str, Any]:
+    if not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError:
+        _log.warning("presidio_angellist: %s is not valid JSON; ignoring", _ENV_EXTRA_BODY)
+        return {}
+    if not isinstance(parsed, dict):
+        _log.warning("presidio_angellist: %s must be a JSON object; ignoring", _ENV_EXTRA_BODY)
+        return {}
+    return parsed
+
 
 # Untrusted-content boundary. Deal emails are attacker-influenced, so everything
 # in the user turn is wrapped in these tags and the system prompt is explicit that
@@ -177,11 +196,13 @@ class LLMClient:
             self._timeout = timeout or float(
                 os.environ.get(_ENV_TIMEOUT) or _DEFAULT_OPENAI_TIMEOUT
             )
+            self._extra_body = _parse_extra_body(os.environ.get(_ENV_EXTRA_BODY))
         else:
             self._base_url = ""
             self._api_key = api_key
             self._model = model or _DEFAULT_MODEL
             self._timeout = timeout or _DEFAULT_OPENAI_TIMEOUT
+            self._extra_body = {}
 
     def available(self) -> bool:
         """True when the selected backend is usable (configured / importable)."""
@@ -332,6 +353,8 @@ class LLMClient:
             "temperature": 0.2,
             "stream": False,
         }
+        # Server-specific params (e.g. disabling a reasoning model's thinking).
+        payload.update(self._extra_body)
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
@@ -344,9 +367,18 @@ class LLMClient:
             raise LLMUnavailableError(f"local LLM request failed: {exc}") from exc
         _log_openai_usage(data)
         try:
-            return data["choices"][0]["message"]["content"]
+            message = data["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMUnavailableError(f"unexpected LLM response shape: {exc}") from exc
+        content = message.get("content") if isinstance(message, dict) else None
+        if not content:
+            # Reasoning models can emit only `reasoning` tokens and no final
+            # content when thinking isn't disabled or the budget is too small.
+            raise LLMUnavailableError(
+                "LLM returned empty content (reasoning-only or truncated; disable "
+                f"thinking via {_ENV_EXTRA_BODY} or raise {_ENV_TIMEOUT}/max_tokens)"
+            )
+        return content
 
 
 _JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*|\s*```$", re.MULTILINE)

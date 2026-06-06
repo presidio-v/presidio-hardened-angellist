@@ -230,3 +230,45 @@ class TestOpenAIBackend:
         rsps_lib.add(rsps_lib.POST, "http://local-llm/v1/chat/completions", status=500)
         with pytest.raises(LLMUnavailableError, match="local LLM request failed"):
             _openai_client().extract_deal("raw", source=None)
+
+
+class TestExtraBodyAndContent:
+    @rsps_lib.activate
+    def test_extra_body_merged_into_request(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv(
+            "ANGELTRIAGE_LLM_EXTRA_BODY", '{"chat_template_kwargs": {"enable_thinking": false}}'
+        )
+        rsps_lib.add(
+            rsps_lib.POST,
+            "http://local-llm/v1/chat/completions",
+            json={"choices": [{"message": {"content": "ok"}}]},
+            status=200,
+        )
+        LLMClient(base_url="http://local-llm/v1", model="qwen", api_key="k").write_memo(
+            _deal_from_dict({"company": "X"}, text="t", source=None),
+            __import__("presidio_angellist.models", fromlist=["Scorecard"]).Scorecard(
+                dimensions=[]
+            ),
+        )
+        body = json.loads(rsps_lib.calls[0].request.body)
+        assert body["chat_template_kwargs"] == {"enable_thinking": False}
+
+    @rsps_lib.activate
+    def test_reasoning_only_response_raises(self) -> None:
+        # Reasoning model emitted thinking but no final content.
+        rsps_lib.add(
+            rsps_lib.POST,
+            "http://local-llm/v1/chat/completions",
+            json={"choices": [{"message": {"role": "assistant", "reasoning": "thinking..."}}]},
+            status=200,
+        )
+        with pytest.raises(LLMUnavailableError, match="empty content"):
+            _openai_client().extract_deal("raw", source=None)
+
+    def test_parse_extra_body(self) -> None:
+        from presidio_angellist.llm import _parse_extra_body
+
+        assert _parse_extra_body(None) == {}
+        assert _parse_extra_body('{"a": 1}') == {"a": 1}
+        assert _parse_extra_body("not json") == {}  # invalid -> ignored
+        assert _parse_extra_body("[1,2]") == {}  # non-object -> ignored

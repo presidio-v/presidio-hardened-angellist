@@ -496,6 +496,23 @@ via a launchd agent.
 - `watch.py` — `persist_processed`, `PollResult.new_results`; CLI wires both
 - Tests extended (264 total); coverage ~95%; ruff + pip-audit clean; version → 0.7.0
 
+### v0.7.1 — Reasoning-model support for the local backend (2026-06-06)
+
+First real deployment against a local **Qwen3.5-9B** (MLX) surfaced that reasoning
+models emit `reasoning` tokens and only later a `content` field — so a default
+chat request returned `message` with no `content`, and extraction/memo silently
+fell back to deterministic/template output.
+
+- Added `ANGELTRIAGE_LLM_EXTRA_BODY` (env JSON) merged into the chat-completions
+  request, so a deployment can pass server-specific params — here
+  `{"chat_template_kwargs": {"enable_thinking": false}}` to disable thinking and
+  get clean content. Kept generic (no model-specific code in the package).
+- Hardened content extraction: read `choices[0].message.content` defensively and
+  raise `LLMUnavailableError` (→ graceful deterministic fallback) when a model
+  returns reasoning-only/empty content, with a message pointing at the fix.
+- Tests for extra-body merge, empty-content handling, and `_parse_extra_body`.
+- Version → 0.7.1.
+
 ## SDLC
 
 These requirements are delivered under the family-wide Presidio SDLC:

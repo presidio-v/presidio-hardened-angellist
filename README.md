@@ -313,6 +313,14 @@ export ANGELTRIAGE_LLM_TIMEOUT=120            # optional, seconds
 | `ANGELTRIAGE_LLM_MODEL` | Model id the server expects |
 | `ANGELTRIAGE_LLM_API_KEY` | Optional bearer token (default `not-needed`) |
 | `ANGELTRIAGE_LLM_PROVIDER` | Optional, `openai`/`anthropic` to force a backend |
+| `ANGELTRIAGE_LLM_EXTRA_BODY` | Optional JSON merged into the request body for server-specific params |
+
+For a **reasoning model** (e.g. Qwen3), disable its thinking so it returns the
+final answer directly (otherwise it may emit only reasoning tokens and no content):
+
+```bash
+export ANGELTRIAGE_LLM_EXTRA_BODY='{"chat_template_kwargs":{"enable_thinking":false}}'
+```
 
 Local endpoints are usually loopback, which the enrichment SSRF guard refuses — so
 LLM calls deliberately bypass that guard. Point it only at a server you control
