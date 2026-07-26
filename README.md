@@ -102,8 +102,8 @@ Nimbus Robotics  [Strong lead · 83.0/100]
 from presidio_angellist import triage_email
 
 result = triage_email("deal.eml", memo=True)
-print(result.scorecard.tier, result.scorecard.composite)   # Strong lead 83.0
-print(result.deal.valuation_cap)                            # 10000000.0
+print(result.scorecard.tier, result.scorecard.composite)  # Strong lead 83.0
+print(result.deal.valuation_cap)  # 10000000.0
 print(result.memo)
 ```
 
@@ -113,8 +113,9 @@ Tune the rubric weights:
 from presidio_angellist import score_deal, parse_email
 
 deal = parse_email("deal.eml")
-sc = score_deal(deal, weights={"team": 0.4, "market": 0.2, "traction": 0.2,
-                               "terms": 0.1, "syndicate": 0.1})
+sc = score_deal(
+    deal, weights={"team": 0.4, "market": 0.2, "traction": 0.2, "terms": 0.1, "syndicate": 0.1}
+)
 ```
 
 ---
@@ -260,7 +261,7 @@ read — re-polling re-fetches them and the deal queue dedups by deal identity.
 ```python
 from presidio_angellist import imap_config_from_env, triage_imap
 
-cfg = imap_config_from_env(folder="Deals", limit=20)   # reads IMAP_* env vars
+cfg = imap_config_from_env(folder="Deals", limit=20)  # reads IMAP_* env vars
 for result in triage_imap(cfg):
     print(result.deal.company, result.scorecard.tier)
 ```
@@ -384,7 +385,7 @@ angeltriage --set-status 4 tracking      # new -> tracking -> passed -> committe
 ```python
 from presidio_angellist import DealStore, triage_email
 
-with DealStore() as store:                       # default path, or DealStore("deals.db")
+with DealStore() as store:  # default path, or DealStore("deals.db")
     saved, is_new = store.save(triage_email("deal.eml"))
     for row in store.list(status="new"):
         print(row.id, row.company, row.tier, row.composite)
