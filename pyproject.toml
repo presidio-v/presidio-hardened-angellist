@@ -50,6 +50,11 @@ dev = [
     "responses>=0.25.0",
     "pip-audit>=2.7.0",
 ]
+# Coverage-guided fuzzing of the untrusted intake path (see fuzz/). Linux only:
+# Atheris publishes no macOS wheel, and none for Python 3.10.
+fuzz = [
+    "atheris>=2.3.0; platform_system == 'Linux'",
+]
 
 [project.urls]
 Homepage = "https://github.com/presidio-v/presidio-hardened-angellist"
@@ -67,13 +72,21 @@ line-length = 99
 select = ["E", "F", "W", "I", "N", "UP", "S", "B", "A", "C4", "SIM", "TCH"]
 ignore = ["S101", "S603", "S607"]
 
+[tool.ruff.lint.per-file-ignores]
+# Atheris dispatches on the exact name `TestOneInput`; it is not ours to rename.
+"fuzz/**" = ["N802"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--strict-markers --tb=short -q"
 
 [tool.coverage.run]
 source = ["presidio_angellist"]
+branch = true
 
 [tool.coverage.report]
+# Blended backstop for local runs. CI additionally enforces the two metrics
+# separately (statement >= 90%, branch >= 80%) from coverage.json, because a
+# single blended threshold lets one metric sag behind the other.
 fail_under = 90
 show_missing = true

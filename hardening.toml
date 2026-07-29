@@ -1,0 +1,24 @@
+# hardening.toml — presidio-hardened-repo manifest for this target.
+#
+# Render input for the hardening templates, the re-run record, and the
+# idempotency anchor. Edited by hand; read by scripts/render.py.
+
+[project]
+name = "presidio-hardened-angellist"
+org = "presidio-v"
+package = "presidio_angellist"
+description = "Presidio security-hardened deal-flow triage & due-diligence toolkit for early-stage (pre-seed / seed) startups sourced via AngelList syndicates."
+language = "python"
+tier = "silver"
+
+[people]
+maintainer = "vstantch"
+reviewer = "ceoofcyber"
+security_contact = "security@presidio-group.eu"
+
+[legal]
+copyright_holder = "PRESIDIO Group"
+license = "MIT"
+
+[badge]
+bestpractices_id = 0          # filled in after a human registers at bestpractices.dev

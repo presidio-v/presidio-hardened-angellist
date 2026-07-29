@@ -18,6 +18,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -39,7 +41,31 @@ jobs:
 
       - name: Run tests with coverage
         run: |
-          pytest -v --cov=presidio_angellist --cov-report=term-missing --cov-report=xml
+          pytest -v --cov=presidio_angellist --cov-branch \
+            --cov-report=term-missing --cov-report=xml --cov-report=json
+
+      # --cov-fail-under blends statement and branch coverage into one number,
+      # which lets one metric sag behind the other. Enforce them separately.
+      - name: Enforce coverage floors (statement >= 90%, branch >= 80%)
+        run: |
+          python - <<'PY'
+          import json
+          import sys
+
+          totals = json.load(open("coverage.json"))["totals"]
+          statement = 100 * totals["covered_lines"] / totals["num_statements"]
+          branches = totals["num_branches"]
+          branch = 100 * totals["covered_branches"] / branches if branches else 100.0
+          print(f"statement coverage: {statement:.2f}%  (floor 90%)")
+          print(f"branch coverage:    {branch:.2f}%  (floor 80%)")
+          failures = []
+          if statement < 90:
+              failures.append(f"statement {statement:.2f}% < 90%")
+          if branch < 80:
+              failures.append(f"branch {branch:.2f}% < 80%")
+          if failures:
+              sys.exit("COVERAGE FAILURE: " + "; ".join(failures))
+          PY
 
       - name: Upload coverage
         if: matrix.python-version == '3.12'
@@ -47,3 +73,59 @@ jobs:
         with:
           name: coverage-report
           path: coverage.xml
+
+  sbom:
+    name: SBOM (CycloneDX)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install package and SBOM tool
+        run: |
+          python -m pip install --upgrade pip "setuptools>=83.0.0"
+          pip install -e .
+          pip install cyclonedx-bom
+
+      - name: Generate SBOM
+        run: cyclonedx-py environment --output-format JSON --output-file sbom.cdx.json
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: sbom
+          path: sbom.cdx.json
+
+  # Coverage-guided fuzzing of the untrusted intake path. Atheris publishes no
+  # macOS wheel and none for Python 3.10, so this job is Linux/3.12 only.
+  fuzz:
+    name: Fuzz (Atheris)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install package and fuzz extra
+        run: |
+          python -m pip install --upgrade pip "setuptools>=83.0.0"
+          pip install -e ".[fuzz]"
+
+      # Dynamic analysis runs with runtime assertions enabled: python is invoked
+      # without -O and PYTHONOPTIMIZE is unset, so `assert` statements are checked.
+      - name: Run fuzz harnesses (time-boxed)
+        run: |
+          for f in fuzz/fuzz_*.py; do
+            echo "::group::$f"
+            python "$f" -atheris_runs=25000 -max_total_time=60
+            echo "::endgroup::"
+          done
