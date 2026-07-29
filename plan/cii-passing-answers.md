@@ -182,7 +182,7 @@ resolve each FILL against the actual primitives used. -->
 
 | Criterion | Status | Justification / URL |
 |---|---|---|
-| `no_leaked_credentials` | **Met** | Verified against the full history, not just the working tree: `git log --all --diff-filter=A --name-only` shows no `.env`, `.pem`, `.key`, `.p12`, `.pfx`, keystore, or otherwise credential-shaped file has ever been added on any branch. By design the package accepts no credential as a CLI argument and persists none — all secrets are read from environment variables at point of use. `.gitignore` excludes `.env`. (Note: GitHub secret scanning is not yet enabled on the repository; enabling it is tracked as a hardening follow-up.) |
+| `no_leaked_credentials` | **Met** | Verified against the full history, not just the working tree: `git log --all --diff-filter=A --name-only` shows no `.env`, `.pem`, `.key`, `.p12`, `.pfx`, keystore, or otherwise credential-shaped file has ever been added on any branch. By design the package accepts no credential as a CLI argument and persists none — all secrets are read from environment variables at point of use. `.gitignore` excludes `.env`. GitHub secret scanning is enabled on the repository, as are Dependabot vulnerability alerts and automated security-fix PRs. |
 
 ## Analysis — static
 
