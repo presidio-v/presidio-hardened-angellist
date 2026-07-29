@@ -159,10 +159,16 @@ verification; the trusted identities are described below.
   ```
 
   Note: tag signing was adopted after `v0.7.1`, so tags up to and including `v0.7.1` are
-  unsigned. Signed tags start from the next release.
+  unsigned — a published tag cannot be re-signed. Every tag from `v0.7.2` onward is
+  signed and shows as Verified on GitHub.
 
 - **PyPI releases** carry PEP 740 attestations published via Trusted Publishing (OIDC, no
-  stored API token); `pip` and the PyPI UI surface these automatically.
+  stored API token). `pip` and the PyPI UI surface these automatically; the raw bundle is
+  also retrievable from PyPI's integrity API:
+
+  ```bash
+  curl -s https://pypi.org/integrity/presidio-hardened-angellist/<version>/<filename>/provenance
+  ```
 
 ## Dependency Management
 
