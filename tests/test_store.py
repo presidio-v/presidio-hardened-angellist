@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import stat
 from typing import TYPE_CHECKING
 
 import pytest
@@ -172,3 +174,37 @@ class TestProcessedMessages:
         with DealStore(path) as store:
             assert store.is_processed("<m1@x>") is True
             assert store.is_processed("<other@x>") is False
+
+
+class TestStoreFilePermissions:
+    """Audit F-03: the deal store holds sensitive data and must not be world-readable."""
+
+    def test_created_db_is_owner_only(self, tmp_path: Path) -> None:
+        db = tmp_path / "nested" / "deals.db"
+        with DealStore(db):
+            pass
+        assert db.exists()
+        assert stat.S_IMODE(db.stat().st_mode) == 0o600
+
+    def test_directory_created_by_the_store_is_owner_only(self, tmp_path: Path) -> None:
+        db = tmp_path / "created-by-us" / "deals.db"
+        with DealStore(db):
+            pass
+        assert stat.S_IMODE(db.parent.stat().st_mode) == 0o700
+
+    def test_existing_db_permissions_are_left_alone(self, tmp_path: Path) -> None:
+        """An operator's deliberate mode on an existing file is not overridden.
+
+        The mode used here only has to *differ* from the 0o600 the store applies on
+        creation -- it deliberately adds no group or other bits, so this test does not
+        itself demonstrate an overly-permissive chmod (CodeQL py/overly-permissive-file).
+        The security-relevant direction, that a file we create is not group- or
+        world-readable, is covered by test_created_db_is_owner_only above.
+        """
+        db = tmp_path / "deals.db"
+        with DealStore(db):
+            pass
+        os.chmod(db, 0o700)
+        with DealStore(db):
+            pass
+        assert stat.S_IMODE(db.stat().st_mode) == 0o700

@@ -59,23 +59,36 @@ in production and run the verification step (below) in your CI on every upgrade.
 These are security invariants, not just interfaces; weakening any of them is
 treated as a breaking change regardless of which version component moves.
 
-1. **No outbound request escapes the hardening layer.** Every request made through
-   `HardenedSession` is upgraded to HTTPS or refused, checked against the SSRF guard, and
-   rate-limited *before* dispatch. Adding a code path that reaches the network without these
-   checks is breaking, even if no signature changes. The one exception is the
-   operator-configured LLM endpoint (`ANGELTRIAGE_LLM_BASE_URL`), which is documented in
-   [SECURITY.md](SECURITY.md) and [ASSURANCE.md](ASSURANCE.md).
+1. **No outbound request escapes the hardening layer — including redirect hops.** Every
+   dispatch through `HardenedSession` is upgraded to HTTPS or refused, checked against the
+   SSRF guard, and rate-limited *before* it goes out. The checks live in
+   `HardenedSession.send`, not `request`, because `requests` resolves redirects via
+   `Session.send` → `resolve_redirects`, which never re-enters `request()`; moving them back
+   would silently reopen the redirect bypass that audit finding F-01 exploited through 0.7.2
+   (fixed in 0.7.3). Adding a code path that reaches the network without these checks is
+   breaking, even if no signature changes. The one exception is the operator-configured LLM
+   endpoint (`ANGELTRIAGE_LLM_BASE_URL`), which is documented in [SECURITY.md](SECURITY.md)
+   and [ASSURANCE.md](ASSURANCE.md).
+
+   *This guarantee was overstated before 0.7.3:* the text claimed complete mediation while
+   redirects bypassed it. The wording is corrected rather than removed so integrators who
+   relied on the old claim can see exactly what changed and when.
 2. **TLS floor.** Enrichment connections negotiate TLS 1.2 or better, with certificate and
    hostname verification always on and an EC-ephemeral cipher list. Lowering the floor,
    widening the cipher list, or making verification optional is breaking.
 3. **Non-public destinations stay refused.** `assert_public_host` rejects loopback, private,
    link-local (including `169.254.169.254`), reserved, multicast, and unspecified addresses,
-   for IP literals and for every address a hostname resolves to. Narrowing that set is
-   breaking.
+   for IP literals and for every address a hostname resolves to. It also refuses hosts written
+   in an alternative numeric notation that does not parse strictly as an IP (`0177.0.0.1`,
+   `0x7f.0.0.1`, `2130706433`), because the resolver's reading of those is platform-dependent,
+   and strips IPv6 zone ids and brackets before checking. Narrowing that set is breaking.
 4. **Secrets never reach a log sink.** The `RedactingFilter` on the `presidio_angellist`
    logger scrubs bearer tokens, `access_token=` / `api_key=` parameters, `Authorization`
-   headers, and `sk_live_*` / `sk-ant-*` keys from every record. Removing a redaction
-   pattern, or emitting a credential outside that logger, is breaking.
+   headers, `sk_live_*` / `sk-ant-*` keys, `password=` / `passwd:` / `pwd` assignments, and
+   credential-shaped environment names such as `IMAP_PASSWORD=` from every record.
+   `ImapConfig.password` and `NotifyConfig.password` are excluded from `repr()` so a
+   stringified config cannot print them. Removing a redaction pattern, restoring a password
+   field to a repr, or emitting a credential outside that logger, is breaking.
 5. **Credentials are environment-only.** No credential — LLM key, IMAP password, SMTP
    password — is accepted as a command-line argument, written to disk, or persisted in the
    deal store. Accepting one on the command line is breaking.
@@ -91,7 +104,13 @@ treated as a breaking change regardless of which version component moves.
    `Deal` and weights always produce the same composite and tier, and no LLM participates.
    Making the score depend on a model — or changing the composite for unchanged input
    outside a documented rubric change — is breaking.
-10. **Optional enrichment never fails triage, and the deterministic path is the fallback.**
+10. **Enrichment reads a bounded prefix.** An enrichment response is streamed and truncated
+    at 512 KiB (`enrich.web.MAX_BODY_BYTES`), and only textual content types are scanned, so
+    a hostile site cannot exhaust memory. Removing the cap is breaking.
+11. **The deal store is created owner-only.** A database this tool creates is mode `0o600`,
+    in a directory it creates at `0o700`. Pre-existing paths are left as the operator set
+    them. Loosening the mode on creation is breaking.
+12. **Optional enrichment never fails triage, and the deterministic path is the fallback.**
     Website enrichment is strictly additive — it fills `one_liner` only when that field is
     empty. LLM extraction is different and worth stating precisely: when the deterministic
     parse is judged incomplete, the LLM's structured result *replaces* the parsed `Deal`

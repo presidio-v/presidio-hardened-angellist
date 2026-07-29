@@ -358,7 +358,7 @@ def _run_watch(args: argparse.Namespace) -> int:
 
     db_path = _db_path(args)
     print(
-        f"angeltriage: watching {imap_cfg.user}@{imap_cfg.host} folder "
+        f"angeltriage: watching {imap_cfg.host} folder "
         f"'{imap_cfg.folder}' every {args.interval:g}s — saving to {db_path} (Ctrl-C to stop)",
         file=sys.stderr,
     )

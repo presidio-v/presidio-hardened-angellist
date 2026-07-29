@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 import os
 import smtplib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from email.message import EmailMessage
 from typing import TYPE_CHECKING
 
@@ -46,7 +46,8 @@ class NotifyConfig:
     sender: str
     recipients: list[str]
     user: str | None = None
-    password: str | None = None
+    # Kept out of repr() for the same reason as ImapConfig.password.
+    password: str | None = field(default=None, repr=False)
     use_ssl: bool = True
 
 

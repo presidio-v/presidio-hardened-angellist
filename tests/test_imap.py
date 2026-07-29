@@ -246,3 +246,14 @@ class TestTriageImap:
         assert len(results) == 1
         assert results[0].deal.company == "Nimbus Robotics"
         assert results[0].deal.source == "imap:1"
+
+
+class TestImapConfigSecrecy:
+    """Audit F-04: the mail password must not appear in a repr or log line."""
+
+    def test_password_is_absent_from_repr(self) -> None:
+        # Fixture value, not a real credential: S105/S106 are about literals that
+        # ship as defaults, and this one exists to prove it never reaches a repr.
+        cfg = ImapConfig(host="imap.example", user="u@example", password="hunter2")  # noqa: S106
+        assert "hunter2" not in repr(cfg)
+        assert cfg.password == "hunter2"  # noqa: S105 - still usable, just not printable

@@ -4,8 +4,9 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.7.x   | ✅ Yes (latest 0.7.2) |
-| 0.6.x   | ✅ Yes |
+| 0.7.3   | ✅ Yes (latest) |
+| 0.7.0 – 0.7.2 | ⚠️ Upgrade to 0.7.3 — affected by the redirect-SSRF defect fixed in 0.7.3 (see below) |
+| 0.6.x   | ⚠️ Upgrade to 0.7.3 — same redirect-SSRF defect |
 | 0.5.x   | ⚠️ Superseded — upgrade to 0.7.x (SSRF + CVE fixes) |
 | 0.4.x   | ⚠️ Superseded — upgrade to 0.7.x |
 | 0.3.x   | ⚠️ Superseded — upgrade to 0.7.x |
@@ -50,11 +51,20 @@ enrichment request** the toolkit makes:
 - **SSRF guard** — Before any outbound request, the target host is checked (and
   resolved, if a name): requests to loopback, private (RFC 1918), link-local
   (incl. the `169.254.169.254` cloud-metadata endpoint), reserved, multicast, and
-  unspecified addresses are refused with an `SSRFError`. This bounds the
-  attacker-influenced enrichment URL. *Residual:* a DNS-rebinding attacker who
-  controls authoritative DNS can still race the resolve/connect window; run
-  `--enrich`/`--watch` from an egress-restricted network when handling low-trust
-  senders.
+  unspecified addresses are refused with an `SSRFError`. Hosts written in an
+  alternative numeric notation that does not parse strictly as an IP (`0177.0.0.1`,
+  `0x7f.0.0.1`, `2130706433`) are refused too, since the resolver's reading of them is
+  platform-dependent, and IPv6 zone ids and brackets are stripped before the check.
+  **The check runs on every hop, including redirects** — it is enforced in
+  `HardenedSession.send`, which `requests` calls for each redirect it resolves, and
+  redirect depth is capped at 5. Enforcing it only on the first request was the
+  redirect-SSRF defect present through 0.7.2 and fixed in 0.7.3; see the CHANGELOG.
+  *Residual:* a DNS-rebinding attacker who controls authoritative DNS can still race
+  the resolve/connect window; run `--enrich`/`--watch` from an egress-restricted
+  network when handling low-trust senders.
+- **Bounded enrichment reads** — An enrichment response is streamed and truncated at
+  512 KiB, and only textual content types are scanned, so a hostile site cannot
+  exhaust memory with a huge body.
 - **Secret / API key redaction** — A `RedactingFilter` is installed on the
   `presidio_angellist` logger at import, so Bearer tokens, `access_token=` /
   `api_key=` query params, and `sk_live_*` / `sk-ant-*` keys are scrubbed from
@@ -112,8 +122,12 @@ boundaries:
 - **The deal queue is a local store.** `--save` writes triaged deals to a local
   SQLite file (`~/.angeltriage/deals.db` by default, parameterized via `--db` /
   `ANGELTRIAGE_DB`). It contains deal data at rest, holds **no secrets/API keys**,
-  and never leaves the machine. Protect it with normal filesystem permissions if
-  the deal data is sensitive; queries are fully parameterized (no SQL injection).
+  and never leaves the machine; queries are fully parameterized (no SQL injection).
+  A database this tool creates is given mode `0o600`, and a directory it creates
+  `0o700`, so deal JSON, memos, founder names, and commercial terms are not
+  world-readable on a shared host. **A pre-existing file is left exactly as you set
+  it** — if your store was created by 0.7.2 or earlier, tighten it once by hand:
+  `chmod 600 ~/.angeltriage/deals.db`. There is no encryption at rest.
 - **IMAP credentials come from the environment only.** `--imap` reads
   `IMAP_HOST` / `IMAP_USER` / `IMAP_PASSWORD` (and optional `IMAP_PORT` /
   `IMAP_FOLDER` / `IMAP_SSL`) from the environment — **never** from the command
@@ -191,6 +205,24 @@ verification; the trusted identities are described below.
 We follow [coordinated vulnerability disclosure](https://en.wikipedia.org/wiki/Coordinated_vulnerability_disclosure).
 We appreciate security researchers who report issues responsibly and will
 credit them in our release notes (with permission).
+
+## Independent Security Review
+
+An independent third-party security review was performed on **2026-07-29** against commit
+`e9e8b60`, covering source, tests, CI/CD, supply chain, dependency advisories, governance
+documentation versus implementation, and the residual threat model, with dynamic probes of the
+SSRF guard, redirect handling, SMTP header injection, secret redaction, and store permissions.
+
+It returned 0 critical, 1 high, 4 medium, and 5 low findings. The high finding — a
+redirect-based SSRF bypass (CWE-918) — and every medium and low finding with a code remedy
+were fixed in **0.7.3**; the [CHANGELOG](CHANGELOG.md) entry for that release lists each one.
+Two findings are process rather than code and are tracked openly: the OpenSSF Code-Review
+score reflects historical merges that predate the current two-person review gate, and
+secret-scanning push protection.
+
+The full report is retained privately under `third-party-audits/` and is available to
+downstream integrators on request. The assurance argument it tested, and the correction it
+forced, are in [ASSURANCE.md](ASSURANCE.md).
 
 ## Software Development Lifecycle
 

@@ -20,7 +20,7 @@ import contextlib
 import imaplib
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -39,7 +39,9 @@ class ImapConfig:
 
     host: str
     user: str
-    password: str
+    # Kept out of repr(): a stray logger.debug(config) or an exception that
+    # stringifies the dataclass must not print the mail password (CWE-532).
+    password: str = field(repr=False)
     port: int = 993
     folder: str = "INBOX"
     use_ssl: bool = True

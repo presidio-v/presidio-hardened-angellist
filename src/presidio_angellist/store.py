@@ -14,6 +14,7 @@ preserved (re-triaging a ``passed`` deal will not reset it to ``new``).
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -25,6 +26,8 @@ from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from presidio_angellist.models import TriageResult
+
+_log = logging.getLogger("presidio_angellist")
 
 # Workflow statuses, in pipeline order.
 STATUSES: tuple[str, ...] = ("new", "tracking", "passed", "committed")
@@ -132,14 +135,50 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
+def _restrict(target: Path, mode: int) -> None:
+    """Best-effort tightening of permissions on a path this tool created.
+
+    A filesystem that does not support the operation (a mounted share, Windows)
+    must not break persistence, so failure is logged rather than raised -- the
+    data is still written, just not permission-hardened.
+    """
+    try:
+        os.chmod(target, mode)
+    except OSError as exc:  # pragma: no cover - platform/filesystem dependent
+        _log.warning(
+            "presidio_angellist: could not set mode %o on %s -- %s; "
+            "check permissions by hand if the deal data is sensitive",
+            mode,
+            target,
+            exc,
+        )
+
+
 class DealStore:
     """A persistent, ranked queue of triaged deals."""
 
     def __init__(self, path: str | Path | None = None) -> None:
         self.path = Path(path) if path is not None else default_db_path()
-        if str(self.path) != ":memory:":
+        on_disk = str(self.path) != ":memory:"
+        # Track what we are about to create, so permissions are tightened on
+        # files and directories this tool owns without silently re-permissioning
+        # something the operator put there deliberately.
+        created_dir = False
+        created_db = False
+        if on_disk:
+            created_dir = not self.path.parent.exists()
             self.path.parent.mkdir(parents=True, exist_ok=True)
+            created_db = not self.path.exists()
         self._conn = sqlite3.connect(str(self.path))
+        if on_disk:
+            # The store holds deal JSON, memos, founder names, and commercial
+            # terms at rest. sqlite3 creates the file with 0o644 under a typical
+            # umask, which is world-readable on a multi-user host (CWE-732).
+            # Existing files are left alone and that is documented in SECURITY.md.
+            if created_db:
+                _restrict(self.path, 0o600)
+            if created_dir:
+                _restrict(self.path.parent, 0o700)
         self._conn.row_factory = sqlite3.Row
         self._conn.executescript(_SCHEMA)
         self._conn.commit()
@@ -233,7 +272,8 @@ class DealStore:
             is_new = False
 
         saved = self.get(row_id)
-        assert saved is not None  # just written
+        if saved is None:  # pragma: no cover - would mean the write vanished
+            raise DealStoreError(f"deal {row_id} could not be read back after write")
         return saved, is_new
 
     # -- processed-message dedup (exactly-once polling) ------------------
@@ -262,7 +302,8 @@ class DealStore:
         if cur.rowcount == 0:
             raise DealStoreError(f"no deal with id {deal_id}")
         saved = self.get(deal_id)
-        assert saved is not None
+        if saved is None:  # pragma: no cover - the UPDATE above matched a row
+            raise DealStoreError(f"deal {deal_id} could not be read back after update")
         return saved
 
     # -- reads -----------------------------------------------------------

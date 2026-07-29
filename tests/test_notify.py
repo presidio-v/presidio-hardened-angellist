@@ -168,3 +168,19 @@ class TestSendNotifications:
         cfg = NotifyConfig(host="h", port=465, sender="from@x", recipients=["a@x"])
         with pytest.raises(NotifyError, match="failed to send"):
             send_notifications(cfg, [_result("A")])
+
+
+class TestNotifyConfigSecrecy:
+    """Audit F-04: the SMTP password must not appear in a repr or log line."""
+
+    def test_password_is_absent_from_repr(self) -> None:
+        cfg = NotifyConfig(
+            host="smtp.example",
+            port=465,
+            sender="me@example",
+            recipients=["you@example"],
+            user="me@example",
+            password="hunter2",  # noqa: S106 - fixture value, see test_imap.py
+        )
+        assert "hunter2" not in repr(cfg)
+        assert cfg.password == "hunter2"  # noqa: S105 - fixture value

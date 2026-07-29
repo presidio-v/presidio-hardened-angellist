@@ -402,7 +402,7 @@ with DealStore() as store:  # default path, or DealStore("deals.db")
 |---|---|
 | **Strict TLS 1.2+ enforcement** | Rejects TLS 1.0/1.1; ephemeral-EC ciphers only; `verify=True` always |
 | **HTTP → HTTPS auto-upgrade** | Insecure `http://` URLs are silently upgraded; non-HTTP(S) schemes refused |
-| **SSRF guard** | Refuses targets resolving to loopback/private/link-local (incl. `169.254.169.254`)/reserved addresses |
+| **SSRF guard** | Refuses targets resolving to loopback/private/link-local (incl. `169.254.169.254`)/reserved addresses, **on every redirect hop**, plus ambiguous numeric notations; redirect depth capped at 5 |
 | **API key / secret redaction** | `RedactingFilter` on the `presidio_angellist` logger scrubs Bearer tokens, `sk_live_*` / `sk-ant-*` keys, and `access_token=`/`api_key=` from **every** log record |
 | **Retry with backoff** | Exponential backoff on connection errors / 429 / 5xx, honouring `Retry-After` |
 | **Per-host rate limiting** | Token-bucket limiter; prevents accidental DoS of enrichment hosts |
