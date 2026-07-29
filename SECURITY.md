@@ -4,7 +4,7 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.7.x   | ✅ Yes (latest 0.7.0) |
+| 0.7.x   | ✅ Yes (latest 0.7.1) |
 | 0.6.x   | ✅ Yes |
 | 0.5.x   | ⚠️ Superseded — upgrade to 0.7.x (SSRF + CVE fixes) |
 | 0.4.x   | ⚠️ Superseded — upgrade to 0.7.x |
@@ -14,8 +14,13 @@
 
 ## Reporting a Vulnerability
 
-Please report security vulnerabilities by opening a private GitHub Security Advisory
-(via the "Security" tab → "Report a vulnerability") rather than a public issue.
+Please report security vulnerabilities **privately**. Do not open a public issue for a
+suspected vulnerability.
+
+- Preferred: open a private
+  [GitHub Security Advisory](https://github.com/presidio-v/presidio-hardened-angellist/security/advisories/new)
+  (repository "Security" tab → "Report a vulnerability").
+- Alternatively, email security@presidio-group.eu.
 
 Include:
 
@@ -25,7 +30,12 @@ Include:
 - Suggested fix (if any)
 
 You will receive an acknowledgement within 5 business days. We aim to release a patch
-within 30 days of a confirmed vulnerability.
+within 30 days of a confirmed vulnerability, and will keep you updated on progress until
+the issue is resolved or dismissed with a rationale.
+
+**Credit.** We credit reporters of valid vulnerabilities by name in the published GitHub
+Security Advisory and in the `CHANGELOG.md` entry for the fix, unless the reporter asks to
+remain anonymous.
 
 ## Security Features
 
@@ -116,12 +126,56 @@ boundaries:
   polling) keeps those env-sourced credentials in the long-running process's memory
   for its lifetime — run it on a host you control.
 
+For the consolidated assurance case — the threat model, the trust boundaries, the argument
+that secure design principles are applied, and how common implementation weaknesses are
+countered — see [ASSURANCE.md](ASSURANCE.md). For components and the processing flow, see
+[ARCHITECTURE.md](ARCHITECTURE.md).
+
+## Verifying Releases and Obtaining Public Signing Keys
+
+Release artefacts and git tags are signed. There is no key to fetch by hand for artefact
+verification; the trusted identities are described below.
+
+- **Release artefacts** are verified with Sigstore-backed build provenance. The trusted
+  identity is the repository's OIDC signer:
+
+  ```bash
+  gh attestation verify <artefact> --repo presidio-v/presidio-hardened-angellist
+  ```
+
+- **Git release tags** are SSH-signed with the organisation's release signing key, which is
+  registered as a signing key on the maintainer's GitHub account, so each release tag shows
+  as **Verified** on the Releases page and via the API:
+
+  ```bash
+  gh api repos/presidio-v/presidio-hardened-angellist/git/tags/<sha> --jq .verification.verified
+  ```
+
+  The public half of that key is published in this repository's
+  [`allowed_signers`](allowed_signers) file. To verify a tag locally:
+
+  ```bash
+  git -c gpg.ssh.allowedSignersFile=allowed_signers verify-tag <tag>
+  ```
+
+  Note: tag signing was adopted after `v0.7.1`, so tags up to and including `v0.7.1` are
+  unsigned. Signed tags start from the next release.
+
+- **PyPI releases** carry PEP 740 attestations published via Trusted Publishing (OIDC, no
+  stored API token); `pip` and the PyPI UI surface these automatically.
+
 ## Dependency Management
 
-- Dependabot is configured to keep all dependencies up to date.
-- CodeQL analysis runs on every push and pull request.
+- Dependabot is configured to keep all dependencies up to date, for both pip and GitHub
+  Actions.
+- CodeQL (`security-extended`) and Bandit both run on every push and pull request.
 - `pip-audit` runs in CI on every push and pull request and fails the build on any
   known-vulnerable dependency.
+- A CycloneDX SBOM is generated in CI and attached to every release.
+- Every GitHub Action is pinned to a commit SHA, and every workflow declares a read-only
+  top-level token, elevating only the single job that needs more.
+- OpenSSF Scorecard runs weekly and on push to `main`; results are published to the public
+  OpenSSF store.
 - Runtime dependency floors are pinned above known CVEs (`urllib3>=2.7.0`,
   `idna>=3.15`, `requests>=2.32.0`).
 - All changes require passing CI (pytest + ruff + pip-audit) before merge.

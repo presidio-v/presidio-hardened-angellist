@@ -10,6 +10,7 @@ build/
 .ruff_cache/
 *.egg
 coverage.xml
+coverage.json
 .claude/
 .specify/
 files.zip

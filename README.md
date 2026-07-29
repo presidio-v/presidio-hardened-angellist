@@ -2,6 +2,8 @@
 
 [![CI](https://github.com/presidio-v/presidio-hardened-angellist/actions/workflows/ci.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-angellist/actions/workflows/ci.yml)
 [![CodeQL](https://github.com/presidio-v/presidio-hardened-angellist/actions/workflows/codeql.yml/badge.svg)](https://github.com/presidio-v/presidio-hardened-angellist/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/presidio-v/presidio-hardened-angellist/badge)](https://scorecard.dev/viewer/?uri=github.com/presidio-v/presidio-hardened-angellist)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13877/badge)](https://www.bestpractices.dev/projects/13877)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 
@@ -415,6 +417,20 @@ explicitly opted in. See [SECURITY.md](SECURITY.md) for the full trust-boundary 
 
 ## Roadmap
 
+### Next 12 months
+
+- **Now / in flight** — OpenSSF hardening: governance and assurance documentation, Scorecard
+  workflow, Bandit SAST, SBOM generation, an Atheris fuzz harness over the intake path, and
+  the OpenSSF Best Practices badge (passing, then silver).
+- **Next** — `0.8.0`: pluggable enrichment providers (Crunchbase / Harmonic) behind a stable
+  interface, and queue export / digest output. First signed release tag and GitHub Release
+  carrying the SBOM and build-provenance attestation.
+- **Later, under evaluation** — a migration mechanism for the SQLite deal store (needed
+  before the schema changes; see [SEMVER.md](SEMVER.md#schemawire-stability)), broader
+  founder/traction signal extraction, and an independent third-party security review.
+
+### Release history
+
 | Version | Highlights |
 |---|---|
 | **0.2.0** | Pivot to deal-flow triage: email intake, deterministic rubric, `--weights` config, LLM extraction fallback + memo, `angeltriage` CLI |
@@ -464,6 +480,18 @@ presidio-hardened-angellist/
 ├── README.md
 └── SECURITY.md
 ```
+
+---
+
+## Governance, Architecture, Security
+
+- [Governance](GOVERNANCE.md) — roles, decision process, and how to become a maintainer.
+- [Architecture](ARCHITECTURE.md) — components, trust boundaries, and the core processing path.
+- [Assurance case](ASSURANCE.md) — the security claims and the evidence backing each one.
+- [Security policy](SECURITY.md) — supported versions and how to report a vulnerability.
+- [Contributing](CONTRIBUTING.md) — the bar a change has to clear, including the test policy.
+- [Stability guarantees](SEMVER.md) — the public API and the invariants downstream can rely on.
+- [Changelog](CHANGELOG.md) — what changed in each release.
 
 ---
 
