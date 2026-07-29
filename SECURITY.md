@@ -4,7 +4,7 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.7.x   | ✅ Yes (latest 0.7.1) |
+| 0.7.x   | ✅ Yes (latest 0.7.2) |
 | 0.6.x   | ✅ Yes |
 | 0.5.x   | ⚠️ Superseded — upgrade to 0.7.x (SSRF + CVE fixes) |
 | 0.4.x   | ⚠️ Superseded — upgrade to 0.7.x |

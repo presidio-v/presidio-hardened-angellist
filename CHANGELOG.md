@@ -11,6 +11,18 @@ Entries before `v0.6.0` are reconstructed from the git history and release tags;
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [0.7.2] — 2026-07-29
+
+**First signed release.** This is the first release carrying a signed git tag, a
+build-provenance attestation, and an SBOM as release assets. Tags up to and including
+v0.7.1 are unsigned — tag signing was adopted after v0.7.1 and a published tag cannot be
+re-signed. See
+[SECURITY.md](SECURITY.md#verifying-releases-and-obtaining-public-signing-keys) for how to
+verify. No functional change to the library: everything below is governance, CI, and
+supply-chain work.
+
 ### Added
 
 - OpenSSF governance and assurance layer: `ARCHITECTURE.md`, `ASSURANCE.md`,
@@ -116,7 +128,8 @@ Security-hardening release.
 
 - Initial scaffold: hardened HTTP session, project layout, CI.
 
-[Unreleased]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.2...HEAD
+[0.7.2]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/presidio-v/presidio-hardened-angellist/releases/tag/v0.6.0
