@@ -13,6 +13,55 @@ Entries before `v0.6.0` are reconstructed from the git history and release tags;
 
 Nothing yet.
 
+## [0.7.3] — 2026-07-30
+
+**Security release.** Fixes a redirect-based SSRF bypass found by an independent
+third-party audit. Anyone using `--enrich`, `--imap`, or `--watch` on untrusted deal
+mail should upgrade; the deterministic path without enrichment was never affected.
+
+### Security
+
+- **SSRF guard now covers redirect hops (High, CWE-918).** The scheme check, HTTPS
+  upgrade, and non-public-address refusal moved from `HardenedSession.request` to
+  `HardenedSession.send`. `requests` resolves redirects inside `Session.send` →
+  `resolve_redirects`, which calls `send()` per hop and never re-enters `request()`,
+  so the previous placement validated only the first hop: a public site answering
+  `302 Location: https://169.254.169.254/` was followed into the cloud-metadata
+  endpoint and its body could reach `deal.one_liner`, the deal store, `--notify`
+  mail, and the LLM. Every hop is now validated before it is fetched.
+- **Redirect depth capped at 5** (`HardenedSession.DEFAULT_MAX_REDIRECTS`), down from
+  the `requests` default of 30. Configurable via `max_redirects=`.
+- **Alternative address notations refused** (CWE-918). A host whose labels are all
+  numeric but which does not parse strictly as an IP — `0177.0.0.1`, `0x7f.0.0.1`,
+  `2130706433` — is now refused rather than handed to the resolver, whose reading of
+  them is platform-dependent. IPv6 zone ids (`127.0.0.1%eth0`) and brackets are
+  stripped before the check.
+- **Enrichment responses are capped at 512 KiB** and streamed (CWE-400); only
+  textual content types are scanned. A hostile site can no longer answer a
+  multi-gigabyte body that the wall-clock timeout does not bound.
+- **The deal store is created owner-only** (CWE-732): mode `0o600` on a database this
+  tool creates, `0o700` on a directory it creates. Pre-existing files are left as the
+  operator set them — see SECURITY.md.
+- **Secret redaction extended** (CWE-532) to `password=` / `passwd:` / `pwd` forms and
+  to credential-shaped environment names such as `IMAP_PASSWORD=`. `ImapConfig.password`
+  and `NotifyConfig.password` are excluded from `repr()`, so a stray
+  `logger.debug(config)` or a stringified exception cannot print a mail password.
+- **Watch mode no longer logs the mailbox username** to stderr.
+
+### Changed
+
+- `store.py` raises `DealStoreError` where it previously used `assert` for control
+  flow, so behaviour is unchanged under `python -O`.
+
+### Documentation
+
+- `ASSURANCE.md` and `SEMVER.md` corrected: both previously claimed the hardening
+  layer mediated *every* request with no bypass path. That was wrong for redirects
+  until this release, and the corrected text explains where the guard actually sits
+  and why.
+- First independent third-party security audit recorded (2026-07-29, against commit
+  `e9e8b60`).
+
 ## [0.7.2] — 2026-07-29
 
 **First signed release.** This is the first release carrying a signed git tag, a
@@ -128,7 +177,8 @@ Security-hardening release.
 
 - Initial scaffold: hardened HTTP session, project layout, CI.
 
-[Unreleased]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.2...HEAD
+[Unreleased]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.3...HEAD
+[0.7.3]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.6.0...v0.7.0

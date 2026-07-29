@@ -47,6 +47,21 @@ _SECRET_PATTERNS: list[tuple[re.Pattern[str], str]] = [
     (re.compile(r"(access_token=)[^&\s]+"), r"\1***REDACTED***"),
     (re.compile(r"(api_key=)[^&\s]+"), r"\1***REDACTED***"),
     (re.compile(r"(Authorization:\s*)[^\r\n]+", re.IGNORECASE), r"\1***REDACTED***"),
+    # Generic password-bearing assignments, in query strings, env dumps, and
+    # dataclass/dict reprs alike: password=x, passwd: 'x', "pwd": "x".
+    (
+        re.compile(
+            r"((?:password|passwd|pwd|secret|token)['\"]?\s*[=:]\s*)(?!\*\*\*)['\"]?[^\s,'\"}&)]+",
+            re.IGNORECASE,
+        ),
+        r"\1***REDACTED***",
+    ),
+    # Credential-shaped environment variable names, e.g. IMAP_PASSWORD=hunter2
+    # or ANGELTRIAGE_SMTP_PASSWORD=hunter2 in a captured environment dump.
+    (
+        re.compile(r"([A-Z0-9_]*(?:PASSWORD|SECRET|TOKEN|API_KEY)\s*=\s*)[^\s,'\"}&)]+"),
+        r"\1***REDACTED***",
+    ),
 ]
 
 
@@ -136,6 +151,44 @@ def _is_blocked_ip(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     )
 
 
+def _normalize_host(host: str) -> str:
+    """Strip the forms that let a non-public target masquerade as a hostname.
+
+    Removes IPv6 brackets and any zone id (``fe80::1%eth0``), either of which
+    would otherwise defeat ``ipaddress`` parsing and fall through to the
+    resolver.
+    """
+    host = host.strip().strip("[]")
+    if "%" in host:  # zone id -- not part of the address for our purposes
+        host = host.split("%", 1)[0]
+    return host
+
+
+def _is_numeric_host(host: str) -> bool:
+    """True when ``host`` is an IP *literal candidate* rather than a hostname.
+
+    A host whose dot-separated labels are all numeric (decimal or ``0x`` hex),
+    or which is one long run of digits, is an address written in some notation --
+    ``0177.0.0.1``, ``0x7f.0.0.1``, ``2130706433``. Those must parse strictly as
+    an IP or be refused, never handed to the resolver, because the resolver's
+    interpretation of them is platform-dependent: on macOS ``0177.0.0.1``
+    resolves to the public ``177.0.0.1`` while on other systems the octal is
+    honoured and it is loopback. A real hostname always has at least one label
+    with a non-numeric, non-hex-prefixed character.
+    """
+    labels = host.split(".")
+    if not all(labels):
+        return False
+    for label in labels:
+        low = label.lower()
+        if low.startswith("0x"):
+            if not low[2:] or not all(c in "0123456789abcdef" for c in low[2:]):
+                return False
+        elif not label.isdigit():
+            return False
+    return True
+
+
 def assert_public_host(host: str) -> None:
     """Raise :class:`SSRFError` if ``host`` is (or resolves to) a non-public IP.
 
@@ -147,10 +200,21 @@ def assert_public_host(host: str) -> None:
     if not host:
         raise SSRFError("refusing request with empty host")
 
+    host = _normalize_host(host)
+    if not host:
+        raise SSRFError("refusing request with empty host")
+
     try:
         literal = ipaddress.ip_address(host)
     except ValueError:
         literal = None
+        if _is_numeric_host(host):
+            # Looks like an address but is not a valid one: an alternative
+            # notation whose meaning depends on the resolver. Fail closed.
+            raise SSRFError(
+                f"refusing request to ambiguous numeric host {host!r}: "
+                "not a valid IP address literal"
+            ) from None
     if literal is not None:
         if _is_blocked_ip(literal):
             raise SSRFError(f"refusing request to non-public address {host}")
@@ -247,6 +311,11 @@ class HardenedSession(requests.Session):
     exponential backoff, and per-host rate limiting.
     """
 
+    #: Redirect hops allowed per request. Deliberately far below the requests
+    #: default of 30: an enrichment fetch has no legitimate need for a long
+    #: redirect chain, and every extra hop is another attacker-chosen target.
+    DEFAULT_MAX_REDIRECTS = 5
+
     def __init__(
         self,
         redactor: SecretRedactor | None = None,
@@ -255,6 +324,7 @@ class HardenedSession(requests.Session):
         max_retries: int = 2,
         backoff_factor: float = 0.3,
         guard_ssrf: bool = True,
+        max_redirects: int | None = None,
     ) -> None:
         super().__init__()
         self._redactor = redactor or SecretRedactor()
@@ -262,33 +332,66 @@ class HardenedSession(requests.Session):
         self._max_retries = max(0, max_retries)
         self._backoff_factor = backoff_factor
         self._guard_ssrf = guard_ssrf
+        self.max_redirects = self.DEFAULT_MAX_REDIRECTS if max_redirects is None else max_redirects
         self.mount("https://", _TLSHardenedAdapter())
         self.mount("http://", _TLSHardenedAdapter())  # will be upgraded below
         self.verify = True
 
-    def request(self, method: str, url: str, **kwargs: Any) -> requests.Response:  # type: ignore[override]
-        # Enforce HTTPS
+    @staticmethod
+    def _upgrade_scheme(url: str) -> str:
+        """Rewrite ``http://`` to ``https://``. Pure string work, no DNS."""
         if url.startswith("http://"):
             url = "https://" + url[7:]
             _log.info("presidio_angellist: upgraded http -> https for %s", url)
+        return url
 
+    def _guard_dispatch(self, url: str) -> None:
+        """Refuse a non-HTTPS scheme or a non-public target, then rate-limit.
+
+        Called for *every* dispatch, first hop and redirect alike.
+        """
         parsed = urlparse(url)
         if parsed.scheme != "https":
             raise SSRFError(f"refusing request with non-HTTPS scheme: {parsed.scheme or '(none)'}")
-
-        # SSRF guard: never let an attacker-supplied URL reach an internal host.
         if self._guard_ssrf:
             assert_public_host(parsed.hostname or "")
+        self._rate_limiter.wait(parsed.netloc)
 
-        # Rate limit per host
-        host = parsed.netloc
-        self._rate_limiter.wait(host)
+    def send(  # type: ignore[override]
+        self, request: requests.PreparedRequest, **kwargs: Any
+    ) -> requests.Response:
+        """Guard every dispatch, including each redirect hop.
+
+        This is the load-bearing placement, not ``request()``. ``requests``
+        resolves redirects inside ``Session.send`` -> ``resolve_redirects``,
+        which calls ``self.send()`` per hop and **never re-enters**
+        ``Session.request()``. A guard living only in ``request()`` therefore
+        checks the first hop and waves the rest through, so a public site
+        answering ``302 Location: https://169.254.169.254/`` would be followed
+        into the cloud-metadata endpoint. Guarding here closes that path: an
+        attacker-chosen ``Location`` is validated before it is fetched.
+
+        Regression coverage: ``tests/test_hardening.py`` (redirect_* cases) and
+        ``tests/test_enrich.py``.
+        """
+        upgraded = self._upgrade_scheme(request.url or "")
+        if upgraded != request.url:
+            request.url = upgraded
+        self._guard_dispatch(upgraded)
+        return super().send(request, **kwargs)
+
+    def request(self, method: str, url: str, **kwargs: Any) -> requests.Response:  # type: ignore[override]
+        # Upgrade here as well so the retry loop below, and anything reading the
+        # response's history, sees the post-upgrade URL. The authoritative scheme
+        # and SSRF checks run in send(), which every hop passes through.
+        url = self._upgrade_scheme(url)
 
         # Redact secrets from any headers being sent
         if "headers" in kwargs and kwargs["headers"]:
             safe_headers = self._redactor.redact_headers(dict(kwargs["headers"]))
             _log.debug("presidio_angellist: outgoing headers: %s", safe_headers)
 
+        host = urlparse(url).netloc
         attempt = 0
         while True:
             try:

@@ -71,9 +71,12 @@ of the contract:
   backend, or a failed notification is logged and skipped; triage still produces a
   deterministic score. Enrichment only ever *adds* to a `Deal`.
 
-**Load-bearing ordering.** The SSRF guard and the HTTPS upgrade run inside
-`HardenedSession.request` *before* the request is dispatched, so no code path can reach the
-network with an unchecked host. The untrusted-content wrapping in `llm.py` is applied to the
+**Load-bearing ordering, and where it lives.** The SSRF guard and the HTTPS upgrade run
+inside `HardenedSession.send` *before* each dispatch, so no code path can reach the network
+with an unchecked host. `send` is the correct seam and `request` is not: `requests` resolves
+redirects in `Session.send` → `resolve_redirects`, which calls `send()` per hop and never
+re-enters `request()`, so a guard in `request` would validate the first hop and follow every
+attacker-chosen `Location` unchecked. That was the defect through 0.7.2. The untrusted-content wrapping in `llm.py` is applied to the
 deal text before it becomes a user turn, not afterwards. Both orderings are part of the
 contract, not an implementation detail.
 
@@ -82,7 +85,7 @@ contract, not an implementation detail.
 | Boundary | Kind | Control |
 |---|---|---|
 | **Forwarded email / CSV → intake** | Input validation | Parsed with the stdlib `email` and `csv` modules; HTML is stripped by an `html.parser` subclass that drops `<script>`, `<style>`, `<head>`, `<title>`. Content only populates dataclass fields — it is never executed, rendered, or used to build shell, SQL, or filesystem operations. |
-| **Deal-derived URL → public internet** | Egress | `HardenedSession`: HTTP is upgraded to HTTPS and any other scheme is refused; TLS 1.2+ with EC-ephemeral ciphers and mandatory certificate verification; `assert_public_host` refuses literals and resolved addresses that are loopback, private, link-local (including `169.254.169.254`), reserved, multicast, or unspecified; per-host rate limiting. Off by default (`--enrich`). |
+| **Deal-derived URL → public internet** | Egress | `HardenedSession`: HTTP is upgraded to HTTPS and any other scheme is refused; TLS 1.2+ with EC-ephemeral ciphers and mandatory certificate verification; `assert_public_host` refuses literals and resolved addresses that are loopback, private, link-local (including `169.254.169.254`), reserved, multicast, or unspecified, plus ambiguous numeric notations; per-host rate limiting; responses truncated at 512 KiB. Enforced in `send()` so **every redirect hop is validated**, with depth capped at 5. Off by default (`--enrich`). |
 | **Deal text → LLM provider** | Egress + injection | The deal text is wrapped in a `<untrusted_deal_content>` block with nested delimiters stripped, and the system prompt states that the block is data and never instructions. Off unless a backend is configured; the API key is read from the environment, never a CLI argument, and is covered by the `sk-ant-*` redaction rule. |
 | **Operator-configured LLM endpoint → local model server** | Egress (documented exception) | `ANGELTRIAGE_LLM_BASE_URL` selects an OpenAI-compatible backend reached with plain `requests`, **not** `HardenedSession`, because such endpoints are typically loopback and the SSRF guard would correctly refuse them. This address is operator-supplied and trusted by configuration; it is never derived from deal content. |
 | **Mail server → IMAP intake** | Credential + input | `IMAP_HOST` / `IMAP_USER` / `IMAP_PASSWORD` are read from the environment only, never the command line, and are never logged. The mailbox is opened read-only. IMAP-over-TLS is the default; plaintext is refused unless `IMAP_ALLOW_INSECURE=1` is set explicitly, which also warns. |

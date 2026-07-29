@@ -28,7 +28,11 @@ sensitive and may contain personal data about founders.
 | Threat | Control |
 |---|---|
 | A sender crafts a deal email whose company URL points at an internal service or a cloud metadata endpoint, using the analyst's `--enrich` run as an SSRF proxy | `assert_public_host` resolves the target and refuses loopback, private, link-local (incl. `169.254.169.254`), reserved, multicast, and unspecified addresses, for IP literals and every resolved address; enrichment is off by default |
-| A sender downgrades an enrichment fetch to plaintext, or to a non-HTTP scheme, to intercept or redirect it | `HardenedSession.request` upgrades `http://` to `https://` and refuses any other scheme outright; TLS 1.2+ with mandatory certificate verification and hostname checking |
+| A sender points at a *public* site under their control which redirects to an internal address, so the first-hop check passes and the fetch lands inside the perimeter | The guard runs in `HardenedSession.send`, which every redirect hop passes through, so each `Location` is validated before it is followed; redirect depth is capped at 5. This was audit finding F-01, exploitable through 0.7.2 and fixed in 0.7.3 |
+| A sender writes the internal address in an alternative notation (`0177.0.0.1`, `0x7f.0.0.1`, `2130706433`) so it parses as a hostname and reaches the resolver, whose interpretation is platform-dependent | A host whose labels are all numeric but which does not parse strictly as an IP literal is refused outright; zone ids and brackets are stripped before the check (audit F-08) |
+| A hostile site answers a multi-gigabyte body to exhaust the analyst's memory during enrichment | The response is streamed and truncated at 512 KiB, and only textual content types are scanned (audit F-02) |
+| Deal data at rest is read by another user on a shared host | The deal store is created mode `0o600` in a directory created `0o700`; pre-existing files are left to the operator, which SECURITY.md states (audit F-03) |
+| A sender downgrades an enrichment fetch to plaintext, or to a non-HTTP scheme, to intercept or redirect it | `HardenedSession` upgrades `http://` to `https://` and refuses any other scheme outright, on every hop; TLS 1.2+ with mandatory certificate verification and hostname checking |
 | A sender embeds instructions in the deal text to steer the LLM extraction or memo (prompt injection) | The deal text is wrapped in a `<untrusted_deal_content>` block with nested delimiters stripped, and both system prompts declare that block to be data and never instructions. Residual risk is real and is stated below |
 | A sender's content reaches a shell, SQL statement, or the filesystem as code | Parsed content only ever populates dataclass fields. All SQL in `store.py` is parameterized; no `subprocess`, `eval`, `exec`, or `pickle` is used on deal content |
 | Malicious HTML or a hostile email structure crashes or hangs the parser | Parsing uses the stdlib `email` and `csv` modules and an `html.parser` subclass; `<script>`/`<style>`/`<head>` are dropped rather than interpreted. Exercised by an Atheris fuzz harness (`fuzz/fuzz_intake.py`) over the full intake path |
@@ -66,7 +70,9 @@ which carries the full table.
   dataclass fields and nothing else.
 - **Deal-derived URL → public internet** — *egress boundary*. `HardenedSession`: HTTPS-only,
   TLS 1.2+ with certificate verification, SSRF guard on literals and resolved addresses,
-  per-host rate limiting. Opt-in.
+  per-host rate limiting. Enforced in `send()`, so the boundary holds across redirect hops
+  and not merely on the first request; depth capped at 5. Response bodies are truncated at
+  512 KiB. Opt-in.
 - **Deal text → LLM provider** — *egress and injection boundary*. Untrusted-content wrapping
   plus an explicit data-not-instructions system prompt; key from the environment.
 - **Operator-configured LLM endpoint → local model server** — *documented exception*. Plain
@@ -97,12 +103,25 @@ controls are added opt-in; weakening an existing default requires an explicit ra
 review ([CONTRIBUTING.md](CONTRIBUTING.md#security-sensitive-changes)).
 
 **Complete mediation.** The scheme check, HTTPS upgrade, SSRF guard, and rate limiter live
-inside `HardenedSession.request`, so they run on *every* request the session makes — a new
-caller cannot forget them, and there is no bypass path short of not using the session. Log
-redaction is likewise enforced at the sink by a filter on the package logger, not at
-individual call sites, so a new `_log.info(...)` anywhere in the package is covered the
-moment it is written. Both placements are chosen specifically so that mediation does not
-depend on future authors remembering it.
+inside `HardenedSession.send` — deliberately `send`, not `request`. `requests` resolves
+redirects inside `Session.send` → `resolve_redirects`, which calls `self.send()` for each hop
+and **never re-enters** `Session.request()`. Guarding in `send` is therefore what makes
+mediation complete: every dispatch, first hop and attacker-chosen `Location` alike, is
+validated before it goes out, and redirect depth is capped at 5 rather than the `requests`
+default of 30. Log redaction is likewise enforced at the sink by a filter on the package
+logger, not at individual call sites, so a new `_log.info(...)` anywhere in the package is
+covered the moment it is written. Both placements are chosen specifically so that mediation
+does not depend on future authors remembering it.
+
+*Correction, recorded rather than quietly fixed.* Until 0.7.3 these controls lived in
+`request()`, and this document claimed on that basis that there was "no bypass path short of
+not using the session." That was wrong: the independent audit of 2026-07-29 (finding F-01)
+demonstrated end-to-end that a public site answering `302 Location:
+https://169.254.169.254/latest/meta-data/` was followed and its body stored in
+`deal.one_liner`. The placement above is the fix, `tests/test_hardening.py`
+(`TestRedirectSSRFGuard`) and `tests/test_enrich.py` are its regression coverage, and this
+paragraph stays because an assurance case that silently rewrites a falsified claim is worth
+less than one that shows where it was wrong.
 
 **Least privilege.** The project holds no long-lived secret of its own: there is no service
 account, no stored token, and no credential file. It reads what it needs from the
@@ -142,7 +161,7 @@ Scorecard** weekly and on push.
 | Memory safety (CWE-119 family) | Not applicable at the source level: Python is memory-safe and the project contains no native extension and no `ctypes`. The residual exposure is in CPython and the C code inside `requests`/`urllib3`, which is covered by dependency floors and `pip-audit` |
 | Cryptographic misuse (CWE-327, CWE-916) | No cryptography is implemented. TLS is configured through `ssl.create_default_context()` with `minimum_version = TLSv1_2`, `check_hostname = True`, `verify_mode = CERT_REQUIRED`, and an EC-ephemeral-only cipher list. No password is stored or hashed by this project. Checked by CodeQL and Bandit (`B501`-class checks) |
 | Hard-coded or exposed secrets (CWE-798, CWE-532) | No secret is committed or defaulted in source; all credentials come from environment variables and are never accepted as CLI arguments. A `RedactingFilter` scrubs bearer tokens, `access_token=`/`api_key=` parameters, `Authorization` headers, and `sk_live_*`/`sk-ant-*` keys from every log record at the sink. Checked by CodeQL, Bandit, GitHub secret scanning, and unit tests over the redaction rules |
-| Insecure network communication / SSRF (CWE-319, CWE-295, CWE-918) | HTTP is upgraded to HTTPS and other schemes refused; TLS 1.2+ with mandatory certificate and hostname verification; `assert_public_host` blocks non-public destinations for both IP literals and resolved names, including IPv4-mapped IPv6. Checked by CodeQL, Bandit, and dedicated SSRF unit tests |
+| Insecure network communication / SSRF (CWE-319, CWE-295, CWE-918) | HTTP is upgraded to HTTPS and other schemes refused; TLS 1.2+ with mandatory certificate and hostname verification; `assert_public_host` blocks non-public destinations for both IP literals and resolved names, including IPv4-mapped IPv6, ambiguous numeric notations, and zone-id forms. Enforced in `HardenedSession.send`, so **redirect hops are validated too** — the gap that audit F-01 exploited through 0.7.2 — with depth capped at 5. Checked by CodeQL, Bandit, and dedicated SSRF unit tests including the redirect cases |
 | Unsafe deserialization (CWE-502) | No `pickle`, `marshal`, `shelve`, or `yaml.load` anywhere in the package. Untrusted structured input is JSON parsed with `json.loads` into plain dicts, then validated field by field; the LLM's JSON response is likewise parsed and validated rather than trusted. Checked by CodeQL and Bandit |
 | Uncontrolled resource consumption (CWE-400) | Bounded retries with exponential backoff, per-host rate limiting, and explicit timeouts on the enrichment fetch (10 s), the OpenAI-compatible LLM call (120 s, tunable), and SMTP delivery (30 s). The Anthropic SDK path relies on the SDK's own default timeout rather than passing the configured value. Enrichment failures are non-fatal, so a slow host degrades rather than blocks |
 | Vulnerable dependencies (CWE-1104) | Three runtime dependencies, each floored above its known CVEs; `pip-audit` fails CI on any known-vulnerable package; Dependabot tracks pip and GitHub Actions weekly; a CycloneDX SBOM is generated in CI and attached to each release |
@@ -152,10 +171,19 @@ These classes are checked continuously: CodeQL and Bandit run on every push and 
 request, `pip-audit` gates every build, and OpenSSF Scorecard runs weekly and on push to
 `main`, with results published to the public OpenSSF store.
 
-**Independent review.** No independent third-party security review has been commissioned for
-this project to date, and none is claimed. Review to date is (a) required code-owner review
-on every change to `main` by someone other than the author, and (b) the automated analysis
-listed above. This paragraph will be updated if and when an external review is performed.
+**Independent review.** An independent third-party security review was performed on
+**2026-07-29** against commit `e9e8b60`, covering source, tests, CI/CD, supply chain,
+dependency advisories, governance documentation versus implementation, and the residual
+threat model, with dynamic probes of the SSRF guard, redirect handling, header injection,
+secret redaction, and store permissions. It returned 0 critical, 1 high, 4 medium, and 5
+low findings. The high finding (F-01, redirect SSRF) and every medium and low finding with
+a code remedy were fixed in **0.7.3**; see the CHANGELOG entry for that release. Two
+findings are process rather than code and are tracked as such: the OpenSSF Code-Review
+score reflects historical merges predating the two-person gate, and secret-scanning push
+protection. The full report is retained privately under `third-party-audits/` and is
+available to downstream integrators on request. Ongoing review is (a) required code-owner
+review on every change to `main` by someone other than the author, and (b) the automated
+analysis listed above.
 
 ## Conclusion
 
