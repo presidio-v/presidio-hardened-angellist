@@ -193,11 +193,18 @@ class TestStoreFilePermissions:
         assert stat.S_IMODE(db.parent.stat().st_mode) == 0o700
 
     def test_existing_db_permissions_are_left_alone(self, tmp_path: Path) -> None:
-        """An operator's deliberate mode on an existing file is not overridden."""
+        """An operator's deliberate mode on an existing file is not overridden.
+
+        The mode used here only has to *differ* from the 0o600 the store applies on
+        creation -- it deliberately adds no group or other bits, so this test does not
+        itself demonstrate an overly-permissive chmod (CodeQL py/overly-permissive-file).
+        The security-relevant direction, that a file we create is not group- or
+        world-readable, is covered by test_created_db_is_owner_only above.
+        """
         db = tmp_path / "deals.db"
         with DealStore(db):
             pass
-        os.chmod(db, 0o640)
+        os.chmod(db, 0o700)
         with DealStore(db):
             pass
-        assert stat.S_IMODE(db.stat().st_mode) == 0o640
+        assert stat.S_IMODE(db.stat().st_mode) == 0o700
