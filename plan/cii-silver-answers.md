@@ -10,7 +10,7 @@ related:
 # CII Best Practices — SILVER answer sheet
 
 Fill-in sheet for the **silver** tab at
-<https://www.bestpractices.dev/en/projects/0>. It covers
+<https://www.bestpractices.dev/en/projects/13877>. It covers
 only the criteria silver *adds* on top of passing; passing answers carry over
 unchanged (see `cii-passing-answers.md`).
 
@@ -27,7 +27,7 @@ Silver uses the **same** embed code as passing; the badge image auto-renders the
 current level:
 
 ```markdown
-[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/0/badge)](https://www.bestpractices.dev/projects/0)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13877/badge)](https://www.bestpractices.dev/projects/13877)
 ```
 
 If the README badge already uses this URL, it upgrades to "silver" automatically

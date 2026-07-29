@@ -23,9 +23,10 @@ resolve it first, honestly, or set the row to N/A with a real reason.
 3. **Confirm the community-health and process docs are on `main` first** —
    `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, `CHANGELOG.md`,
    `SEMVER.md`. Every URL cited below must resolve on `main` before you answer.
-4. Record your badge id in `hardening.toml` (`[badge] bestpractices_id`) once the
-   project is created; this sheet's silver counterpart references it as
-   `0`.
+4. Badge id **13877** is registered and recorded in `hardening.toml`
+   (`[badge] bestpractices_id`). The registered `repo_url` is exactly
+   `https://github.com/presidio-v/presidio-hardened-angellist`, verified against
+   <https://www.bestpractices.dev/projects/13877.json>.
 
 Shorthand below: `REPO` = `https://github.com/presidio-v/presidio-hardened-angellist`.
 
