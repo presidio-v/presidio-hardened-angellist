@@ -24,3 +24,14 @@ updates:
       - dependencies
     commit-message:
       prefix: "ci"
+    # codeql-action ships init, autobuild and analyze as separate actions out of
+    # one repository, and the three must run at the same version — a workflow
+    # mixing them fails the required `analyze (python)` check with "Loaded a
+    # configuration file for version X, but running version Y". Ungrouped,
+    # Dependabot opens one PR per sub-action and none of them can go green on
+    # its own (see #39, #42, #43). Grouping them yields one mergeable PR.
+    groups:
+      codeql-action:
+        patterns:
+          - "github/codeql-action"
+          - "github/codeql-action/*"
