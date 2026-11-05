@@ -37,7 +37,19 @@ jobs:
           ruff check .
 
       - name: Audit dependencies for known CVEs
-        run: pip-audit
+        # Python 3.10 has no fixed filelock release; it ignores only the advisories
+        # listed in .github/pip-audit-py310-ignore.txt. Other legs ignore nothing.
+        env:
+          PY_VERSION: ${{ matrix.python-version }}
+        run: |
+          ignore=()
+          if [ "$PY_VERSION" = "3.10" ]; then
+            while read -r id; do
+              case "$id" in ""|"#"*) continue ;; esac
+              ignore+=(--ignore-vuln "$id")
+            done < .github/pip-audit-py310-ignore.txt
+          fi
+          pip-audit "${ignore[@]}"
 
       - name: Run tests with coverage
         run: |
