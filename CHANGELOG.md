@@ -11,7 +11,12 @@ Entries before `v0.6.0` are reconstructed from the git history and release tags;
 
 ## [Unreleased]
 
-Nothing yet.
+### Fixed
+
+- **`--notify` mail now carries `Date` and `Message-ID`.** `build_message` left both
+  to the relay. RFC 5322 requires `Date`, and mail without these headers scores worse
+  with spam filters and some clients. The `Message-ID` domain comes from the sender
+  address, so the local hostname no longer leaks into outgoing headers.
 
 ## [0.7.3] — 2026-07-30
 
