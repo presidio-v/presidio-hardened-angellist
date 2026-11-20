@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from email.utils import parsedate_to_datetime
+
 import pytest
 
 from presidio_angellist.models import Deal, DimensionScore, Scorecard, TriageResult
@@ -125,6 +127,25 @@ class TestBuildMessage:
         # mistaken for incomplete URL-substring sanitization.
         assert result.deal.website is not None
         assert result.deal.website in body
+
+    def test_sets_date_and_message_id(self) -> None:
+        cfg = NotifyConfig(
+            host="h", port=465, sender="Deals <from@example.org>", recipients=["a@x"]
+        )
+        msg = build_message(cfg, _result())
+        assert parsedate_to_datetime(msg["Date"]).tzinfo is not None
+        assert msg["Message-ID"].startswith("<")
+        assert msg["Message-ID"].endswith("@example.org>")
+
+    def test_message_ids_are_unique_per_message(self) -> None:
+        cfg = NotifyConfig(host="h", port=465, sender="from@example.org", recipients=["a@x"])
+        ids = {build_message(cfg, _result())["Message-ID"] for _ in range(5)}
+        assert len(ids) == 5
+
+    def test_message_id_without_sender_domain_still_valid(self) -> None:
+        cfg = NotifyConfig(host="h", port=465, sender="localonly", recipients=["a@x"])
+        msg = build_message(cfg, _result())
+        assert msg["Message-ID"].startswith("<") and msg["Message-ID"].endswith(">")
 
 
 class TestSendNotifications:
