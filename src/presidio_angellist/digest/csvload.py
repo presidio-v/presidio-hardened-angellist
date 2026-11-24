@@ -99,9 +99,9 @@ class Position:
 
     @property
     def net_at_cost(self) -> float:
-        """Net value with a locked position carried at cost."""
+        """Net value with a locked position carried at cost (plus any cash already paid out)."""
         net = self.net
-        return self.invested if net is None else net
+        return self.invested + self.realized if net is None else net
 
     @property
     def multiple(self) -> float | None:

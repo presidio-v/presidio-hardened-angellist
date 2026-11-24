@@ -264,3 +264,73 @@ def grouped_columns(
         lx += 0.7 + 0.14 * len(lab)
     o.append(r"\end{tikzpicture}")
     return "\n".join(o)
+
+
+def paired_hbar(
+    rows: Sequence[tuple[str, float, float, str]],
+    width_cm: float,
+    *,
+    fmt: Callable[[float], str] = money,
+    bar_h: float = 0.17,
+    gap: float = 0.16,
+) -> str:
+    """Two thin bars per row: cost (grey) above value (``colour``). Labels escaped here."""
+    vmax = max([max(a, b) for _, a, b, _ in rows] + [1e-9])
+    row_h = 2 * bar_h + gap
+    h = max(len(rows), 1) * row_h
+    o = [r"\begin{tikzpicture}[font=\scriptsize]"]
+    for i, (lab, cost, value, col) in enumerate(rows):
+        y = h - (i + 1) * row_h + gap / 2
+        o.append(rf"\node[anchor=east,text=dgnavy] at (0,{y + bar_h:.3f}) {{{tex(lab)}}};")
+        for j, (v, c) in enumerate(((cost, "dggray!70"), (value, col))):
+            yy = y + bar_h * (1 - j)
+            x = max(min(max(v, 0.0) / vmax, 1.0) * width_cm, 0.03)
+            o.append(rf"\fill[{c}] (0,{yy:.3f}) rectangle ({x:.3f},{yy + bar_h * 0.9:.3f});")
+            o.append(
+                rf"\node[anchor=west,text=dgnavy,font=\tiny] at ({x + 0.04:.3f},"
+                rf"{yy + bar_h * 0.45:.3f}) {{{fmt(v)}}};"
+            )
+    o.append(rf"\draw[dggray!60] (0,0) -- (0,{h:.3f});")
+    o.append(r"\end{tikzpicture}")
+    return "\n".join(o)
+
+
+def stacked_rows(
+    rows: Sequence[tuple[str, Sequence[tuple[float, str, str]]]],
+    legend: Sequence[tuple[str, str]],
+    width_cm: float = 12.0,
+    *,
+    bar_h: float = 0.42,
+    gap: float = 0.16,
+) -> str:
+    """One 100% bar per row. Segments are (value, colour, raw text shown inside)."""
+    h = max(len(rows), 1) * (bar_h + gap)
+    o = [r"\begin{tikzpicture}[font=\scriptsize]"]
+    for i, (lab, parts) in enumerate(rows):
+        y = h - (i + 1) * (bar_h + gap) + gap / 2
+        o.append(rf"\node[anchor=east,text=dgnavy] at (0,{y + bar_h / 2:.3f}) {{{tex(lab)}}};")
+        tot = sum(max(v, 0.0) for v, _, _ in parts) or 1.0
+        x = 0.0
+        for v, col, text in parts:
+            w = max(v, 0.0) / tot * width_cm
+            if w <= 0:
+                continue
+            o.append(rf"\fill[{col}] ({x:.3f},{y:.3f}) rectangle ({x + w:.3f},{y + bar_h:.3f});")
+            if text and w > 0.25 * max(len(text), 3) * 0.6:
+                o.append(
+                    rf"\node[text=white,font=\tiny\bfseries] at ({x + w / 2:.3f},"
+                    rf"{y + bar_h / 2:.3f}) {{{tex(text)}}};"
+                )
+            x += w
+    lx, ly = 0.0, -0.25
+    for lab, col in legend:
+        step = 0.7 + 0.14 * len(lab)
+        if lx and lx + step > width_cm:
+            lx, ly = 0.0, ly - 0.4
+        o.append(
+            rf"\fill[{col}] ({lx:.2f},{ly - 0.1:.2f}) rectangle ({lx + 0.25:.2f},{ly + 0.1:.2f});"
+        )
+        o.append(rf"\node[anchor=west,text=dgnavy] at ({lx + 0.3:.2f},{ly:.2f}) {{{tex(lab)}}};")
+        lx += step
+    o.append(r"\end{tikzpicture}")
+    return "\n".join(o)

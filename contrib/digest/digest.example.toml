@@ -27,6 +27,13 @@ out_dir = "digests/{quarter}"
 vintages = [2026]
 bands = ["2017-2020", "2021-2025"]
 
+# Optional advisor estimates for locked positions (see locked-estimates.example.json).
+# locked_estimates = "digests/{quarter}/locked-estimates.json"
+
+# Also build one Portfolio Digest comparing every vintage and band above, plus a total.
+# Editorial text: portfolio.json in content_dir.
+portfolio = false
+
 # Footer document id: <prefix>-<quarter> · <label> · v<version> · <state> <date>
 version = "1.0"
 state = "draft"

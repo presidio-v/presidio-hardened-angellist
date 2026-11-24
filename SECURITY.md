@@ -179,6 +179,10 @@ sensitive than inbound deal mail. Its controls:
   classification (default `TLP:AMBER`). The scheduled run's email notice lists file
   names only; attaching PDFs requires `attach_pdf = true`. Keep `out_dir` off shared
   and synced folders you do not control.
+- **Locked estimates and portfolio content** are private runtime inputs. Their text
+  (events, method, segment verdicts, source labels) is escaped like all other content,
+  source links are limited to `http(s)`, and the estimates file is validated strictly.
+  Estimates are never sent to a model; the advisor refresh payload is unchanged.
 - **No private data in the repository.** Brand, gate parameters, editorial content and
   the export are runtime inputs; the repository ships only neutral examples
   (`contrib/digest/`) and synthetic fixtures.

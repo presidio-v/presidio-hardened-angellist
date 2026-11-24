@@ -13,6 +13,9 @@ Definitions, so the numbers in the PDF are reproducible:
 - *0x share*: positions marked at exactly zero, as a share of marked positions.
 - *top-1 / top-3 share*: the largest one / three net values as a share of the
   band's total net value (locked at cost).
+- *TVPI incl. locked estimates*: as "locked at cost", but a locked position with an
+  advisor estimate (:mod:`estimates`) is carried at its estimated net (or gross)
+  value instead of cost. Locked positions without an estimate stay at cost.
 """
 
 from __future__ import annotations
@@ -20,8 +23,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from presidio_angellist.digest.estimates import has_estimate, value_incl_estimates
+
 if TYPE_CHECKING:
     from presidio_angellist.digest.csvload import Position
+    from presidio_angellist.digest.estimates import Estimates
     from presidio_angellist.digest.gate import GateResult
 
 MULTIPLE_BUCKETS = ("0x", "0-1x", "1-3x", "3-10x", ">10x", "locked")
@@ -57,9 +63,15 @@ class Group:
     net_marked: float = 0.0
     net_at_cost: float = 0.0
     realized: float = 0.0
+    net_est: float = 0.0
+    net_est_gross: float = 0.0
+    n_estimated: int = 0
 
-    def add(self, p: Position) -> None:
+    def add(self, p: Position, est: Estimates | None = None) -> None:
         self.n += 1
+        self.net_est += value_incl_estimates(p, est)
+        self.net_est_gross += value_incl_estimates(p, est, gross=True)
+        self.n_estimated += int(has_estimate(p, est))
         self.invested += p.invested
         self.realized += p.realized
         self.net_at_cost += p.net_at_cost
@@ -77,11 +89,45 @@ class Group:
     def tvpi_marked(self) -> float | None:
         return _ratio(self.net_marked, self.invested_marked)
 
+    @property
+    def tvpi_est(self) -> float | None:
+        """TVPI with locked positions at their estimated net value (else at cost)."""
+        return _ratio(self.net_est, self.invested)
 
-def group_by(positions: list[Position], key) -> dict[str, Group]:  # noqa: ANN001
+    @property
+    def tvpi_est_gross(self) -> float | None:
+        return _ratio(self.net_est_gross, self.invested)
+
+    @property
+    def dpi(self) -> float | None:
+        return _ratio(self.realized, self.invested)
+
+    def merge(self, other: Group) -> Group:
+        out = Group()
+        for f in (
+            "n",
+            "n_marked",
+            "invested",
+            "invested_marked",
+            "net_marked",
+            "net_at_cost",
+            "realized",
+            "net_est",
+            "net_est_gross",
+            "n_estimated",
+        ):
+            setattr(out, f, getattr(self, f) + getattr(other, f))
+        return out
+
+
+def group_by(
+    positions: list[Position],
+    key,  # noqa: ANN001
+    est: Estimates | None = None,
+) -> dict[str, Group]:
     out: dict[str, Group] = {}
     for p in positions:
-        out.setdefault(key(p), Group()).add(p)
+        out.setdefault(key(p), Group()).add(p, est)
     return out
 
 
@@ -105,11 +151,16 @@ class AggregateMetrics:
 
 
 def aggregate(
-    positions: list[Position], gate: list[GateResult], *, top_n: int = 10
+    positions: list[Position],
+    gate: list[GateResult],
+    *,
+    top_n: int = 10,
+    estimates: Estimates | None = None,
 ) -> AggregateMetrics:
+    est = estimates
     total = Group()
     for p in positions:
-        total.add(p)
+        total.add(p, est)
     marked = [p for p in positions if p.net is not None]
     zeros = sum(1 for p in marked if (p.multiple or 0.0) <= 0)
     ranked = sorted(positions, key=lambda p: -p.net_at_cost)
@@ -117,15 +168,15 @@ def aggregate(
     tot_val = sum(values)
     by_year: dict[int, Group] = {}
     for p in positions:
-        by_year.setdefault(p.year, Group()).add(p)
+        by_year.setdefault(p.year, Group()).add(p, est)
     by_mult = {b: Group() for b in MULTIPLE_BUCKETS}
     for p in positions:
-        by_mult[multiple_bucket(p)].add(p)
+        by_mult[multiple_bucket(p)].add(p, est)
     by_verdict: dict[str, Group] = {v: Group() for v in ("Pass", "Borderline", "Fail")}
     by_thesis: dict[str, Group] = {}
     for p, g in zip(positions, gate, strict=True):
-        by_verdict[g.verdict].add(p)
-        by_thesis.setdefault(g.bucket, Group()).add(p)
+        by_verdict[g.verdict].add(p, est)
+        by_thesis.setdefault(g.bucket, Group()).add(p, est)
     return AggregateMetrics(
         total=total,
         unrealized=sum(p.unrealized or 0.0 for p in marked),
@@ -138,7 +189,7 @@ def aggregate(
         top3_share=_ratio(sum(values[:3]), tot_val),
         by_year=dict(sorted(by_year.items())),
         by_bucket_multiple=by_mult,
-        by_lead=group_by(positions, lambda p: p.lead or "(no lead)"),
+        by_lead=group_by(positions, lambda p: p.lead or "(no lead)", est),
         by_thesis=by_thesis,
         by_verdict=by_verdict,
         top_positions=[p for p in ranked if p.net is not None][:top_n],
@@ -147,16 +198,7 @@ def aggregate(
 
 def gate_verdict_sentence(m: AggregateMetrics) -> str:
     """Plain-language answer to "would the gate have helped?" from the verdict groups."""
-    keep = Group()
-    for v in ("Pass", "Borderline"):
-        g = m.by_verdict[v]
-        keep.n += g.n
-        keep.n_marked += g.n_marked
-        keep.invested += g.invested
-        keep.invested_marked += g.invested_marked
-        keep.net_marked += g.net_marked
-        keep.net_at_cost += g.net_at_cost
-        keep.realized += g.realized
+    keep = m.by_verdict["Pass"].merge(m.by_verdict["Borderline"])
     cut = m.by_verdict["Fail"]
     if not keep.n or not cut.n:
         who = "every" if not keep.n else "no"

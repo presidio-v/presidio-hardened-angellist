@@ -1,0 +1,51 @@
+{
+  "as_of": "2026-11-01",
+  "method": "Last priced round or announced transaction where public; otherwise distress signals. Multiples are relative to our entry cap.",
+  "positions": {
+    "Kestrel Nuclear": {
+      "evidence": "priced_round",
+      "event": "Seed extension announced at a higher valuation (press).",
+      "post_money_usd": 36000000,
+      "est_multiple": 2.0,
+      "range": [1.5, 3.0],
+      "confidence": "medium",
+      "sources": [{"label": "Press", "url": "https://example.com/kestrel-extension"}]
+    },
+    "Northwind Defense": {
+      "evidence": "priced_round",
+      "event": "Bridge round, terms undisclosed.",
+      "post_money_usd": null,
+      "est_multiple": 1.2,
+      "range": [0.8, 1.6],
+      "confidence": "low",
+      "sources": []
+    },
+    "Orchid Health": {
+      "evidence": "distress",
+      "event": "Pivot and layoffs reported.",
+      "post_money_usd": null,
+      "est_multiple": 0.3,
+      "range": [0.0, 0.6],
+      "confidence": "low",
+      "sources": [{"label": "Blog", "url": "javascript:alert(1)"}]
+    },
+    "Juniper Labs": {
+      "evidence": "acquisition",
+      "event": "Acquired by a strategic buyer (announced).",
+      "post_money_usd": 90000000,
+      "est_multiple": 1.8,
+      "range": [1.6, 2.0],
+      "confidence": "high",
+      "sources": [{"label": "Announcement", "url": "https://example.org/juniper"}]
+    },
+    "Fable Foods": {
+      "evidence": "shutdown",
+      "event": "Wind-down notice.",
+      "post_money_usd": null,
+      "est_multiple": 0.0,
+      "range": [0.0, 0.0],
+      "confidence": "high",
+      "sources": []
+    }
+  }
+}

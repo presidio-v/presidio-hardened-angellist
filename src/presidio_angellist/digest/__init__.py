@@ -8,7 +8,11 @@ Two modes:
 - **aggregate**: a band of years (e.g. 2017-2020), with KPI tiles (TVPI, DPI,
   concentration), invested vs value by year, the multiple distribution, top
   positions, per-lead and per-thesis-bucket tables, and an aggregated gate
-  retro-check ("would the gate have helped?").
+  retro-check ("would the gate have helped?");
+- **portfolio** (``--portfolio``): every requested vintage and band side by side,
+  plus a total.
+
+Optional advisor estimates value locked positions (:mod:`estimates`).
 
 The core is stdlib-only; the PDF is produced by an external ``xelatex`` run with
 ``-no-shell-escape`` in a temporary directory. Every string from the CSV, the
@@ -37,6 +41,7 @@ from presidio_angellist.digest.csvload import (
     newest_export,
     parse_positions,
 )
+from presidio_angellist.digest.estimates import Estimates, EstimatesError, load_estimates
 from presidio_angellist.digest.gate import (
     GateConfig,
     GateConfigError,
@@ -45,7 +50,13 @@ from presidio_angellist.digest.gate import (
     load_gate_config,
 )
 from presidio_angellist.digest.metrics import AggregateMetrics, aggregate
-from presidio_angellist.digest.render import DocMeta, build_aggregate_tex, build_vintage_tex
+from presidio_angellist.digest.render import (
+    DocMeta,
+    Segment,
+    build_aggregate_tex,
+    build_portfolio_tex,
+    build_vintage_tex,
+)
 
 __all__ = [
     "AggregateMetrics",
@@ -54,17 +65,22 @@ __all__ = [
     "DigestConfigError",
     "DigestDataError",
     "DocMeta",
+    "Estimates",
+    "EstimatesError",
     "GateConfig",
     "GateConfigError",
     "GateResult",
     "Position",
+    "Segment",
     "aggregate",
     "build_aggregate_tex",
+    "build_portfolio_tex",
     "build_vintage_tex",
     "compile_pdf",
     "gate_retro",
     "load_brand",
     "load_content",
+    "load_estimates",
     "load_gate_config",
     "load_positions",
     "newest_export",

@@ -383,7 +383,9 @@ in this repository:
 | Gate config (JSON) | [`contrib/digest/gate-config.example.json`](contrib/digest/gate-config.example.json) | Stage, sector, cap norm/ceiling, per-lead annual limit, top leads, sector mapping. Validated strictly; a missing field is an error. |
 | Brand (TOML/JSON) | [`contrib/digest/brand.example.toml`](contrib/digest/brand.example.toml) | Name, tagline, logo, colours, font (with fallback), classification label (default `TLP:AMBER`), document-id prefix, header text. |
 | Editorial content (JSON) | `tests/fixtures/digest/*.json` | `vintage-<year>.json` (or `content.json`) and `agg-<first>-<last>.json`: headline, thesis, summary, per-company status/signals/forecast/risk/sources. |
-| Run config (TOML/JSON) | [`contrib/digest/digest.example.toml`](contrib/digest/digest.example.toml) | For scheduled runs: paths, vintages, bands, refresh and notify switches. |
+| Locked estimates (JSON, optional) | [`contrib/digest/locked-estimates.example.json`](contrib/digest/locked-estimates.example.json) | Advisor estimates for locked positions: evidence (`priced_round`, `acquisition`, `shutdown`, `down_round`, `distress`, `none`), event, post-money, estimated multiple, range, confidence, sources. |
+| Portfolio content (JSON, optional) | `tests/fixtures/digest/portfolio.json` | `portfolio.json` for `--portfolio`: headline, a verdict per segment label, summary, lessons, actions. |
+| Run config (TOML/JSON) | [`contrib/digest/digest.example.toml`](contrib/digest/digest.example.toml) | For scheduled runs: paths, vintages, bands, estimates, portfolio, refresh and notify switches. |
 
 ```bash
 # One vintage and one band, from the newest export in a directory
@@ -402,6 +404,22 @@ angeltriage digest refresh --csv-dir … --content-dir … --vintage 2026 --reda
 # Scheduled: everything from one private config (current quarter, newest export)
 angeltriage digest run --config ~/private/angellist/digest.toml --dry-run
 angeltriage digest run --config ~/private/angellist/digest.toml
+```
+
+**Locked estimates.** `--locked-estimates FILE` values locked positions from an advisor
+file instead of at cost: gross = invested × m, net = invested × (1 + (m − 1) × (1 − carry))
+when m > 1 (carry from the export, 20% where empty), else invested × m. The digests add a
+"TVPI incl. locked estimates" tile, a "Locked positions: estimated value" section and an
+"Est. locked value" card line. Estimates apply only to locked positions; missing ones stay
+at cost and are flagged. They are advisor estimates from public information, not marks.
+
+**Portfolio Digest.** `--portfolio` builds `<prefix>-Portfolio-Digest-<quarter>.pdf`
+comparing every `--vintage` and `--band` in the same run, plus a total:
+
+```bash
+angeltriage digest build --csv-dir … --gate-config … --brand … --content-dir … --out-dir … \
+  --vintage 2026 --band 2015-2020 --band 2021-2025 \
+  --locked-estimates ~/private/angellist/locked-estimates.json --portfolio
 ```
 
 A weekly Saturday-morning launchd template is in

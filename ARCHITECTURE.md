@@ -44,7 +44,8 @@ Listed in dependency order — primitives first, orchestration last.
 | `digest/csvload.py` | Parses the AngelList investments export into `Position` records (disclaimer line, `Locked`, empty caps, currency symbols). |
 | `digest/gate.py` | Strict gate-config validation and the retro-check (stage, sector, cap, top-lead substitute, per-lead annual limit in date order). |
 | `digest/metrics.py` | Deterministic aggregate metrics: TVPI (locked at cost / marked only), DPI, multiple buckets, per-lead / per-bucket / per-verdict groups. |
-| `digest/latex.py`, `digest/render.py` | LaTeX escaping and URL sanitising; TikZ charts; vintage and aggregate document assembly. Every external string passes through `tex()` / `tex_url()`. |
+| `digest/estimates.py` | Strict validation of the optional locked-value estimates file; gross and net-of-carry estimated values for locked positions only. |
+| `digest/latex.py`, `digest/render.py` | LaTeX escaping and URL sanitising; TikZ charts; vintage, aggregate and portfolio document assembly. Every external string passes through `tex()` / `tex_url()`. |
 | `digest/build.py` | Pre-flight primitive scan, then `xelatex -no-shell-escape` in a temporary directory with `openout_any=p`, a minimal environment and a timeout. |
 | `digest/refresh.py` | Optional advisor refresh via the Anthropic Messages API + web search, with allowlisted, scrubbed and re-checked payloads; writes drafts only. |
 | `digest/runner.py`, `digest/cli.py` | Run config, quarter detection, newest-export selection, scheduled `digest run`, optional notice via `notify.send_plain`. |

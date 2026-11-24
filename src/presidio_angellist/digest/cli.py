@@ -3,7 +3,7 @@
 
     angeltriage digest build   --csv-dir DIR --gate-config FILE --out-dir DIR \\
                                [--vintage 2026] [--band 2017-2020] [--brand FILE] \\
-                               [--content-dir DIR]
+                               [--content-dir DIR] [--locked-estimates FILE] [--portfolio]
     angeltriage digest refresh --csv-dir DIR --content-dir DIR [--vintage Y] \\
                                [--band A-B] [--model M]
     angeltriage digest run     --config digest.toml [--dry-run] [--no-refresh] [--no-notify]
@@ -32,12 +32,15 @@ from presidio_angellist.digest.csvload import (
     load_positions,
     newest_export,
 )
+from presidio_angellist.digest.estimates import load_estimates
 from presidio_angellist.digest.gate import GateConfigError, load_gate_config
 from presidio_angellist.digest.runner import (
     Inputs,
     build_band,
+    build_portfolio,
     build_vintage,
     current_quarter,
+    estimate_warnings,
     load_run_config,
     run,
 )
@@ -61,7 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    b = sub.add_parser("build", help="Build vintage and/or band PDFs.")
+    b = sub.add_parser("build", help="Build vintage, band and portfolio PDFs.")
     _add_source(b)
     b.add_argument("--gate-config", type=Path, required=True, help="Gate config JSON.")
     b.add_argument("--brand", type=Path, default=None, help="Brand config (TOML or JSON).")
@@ -75,6 +78,19 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--state", default="draft", help="draft / approved, shown in the footer id.")
     b.add_argument("--keep-tex", action="store_true", help="Also write the .tex next to the PDF.")
     b.add_argument("--xelatex", default=None, help="Path to xelatex (default: auto-detect).")
+    b.add_argument(
+        "--locked-estimates",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="JSON of advisor value estimates for locked positions.",
+    )
+    b.add_argument(
+        "--portfolio",
+        action="store_true",
+        help="Also build one Portfolio Digest comparing every --vintage and --band "
+        "(content: portfolio.json in --content-dir).",
+    )
 
     r = sub.add_parser("refresh", help="Draft editorial content with Claude + web search.")
     _add_source(r)
@@ -115,6 +131,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
         return _err("--content applies to a single --vintage or --band")
     try:
         _, positions = _positions(args)
+        estimates = load_estimates(args.locked_estimates)
         inp = Inputs(
             positions=positions,
             gate=load_gate_config(args.gate_config),
@@ -128,20 +145,26 @@ def _cmd_build(args: argparse.Namespace) -> int:
             keep_tex=args.keep_tex,
             xelatex=args.xelatex,
             as_of_override=args.as_of,
+            estimates=estimates,
         )
         for b in args.band:
             parse_band(b)
     except _CONFIG_ERRORS as exc:
         return _err(str(exc))
+    for w in estimate_warnings(estimates, positions):
+        print(f"angeltriage digest: warning: {w}", file=sys.stderr)
     failed = False
     targets = [("v", v) for v in args.vintage] + [("b", b) for b in args.band]
+    if args.portfolio:
+        targets.append(("p", "portfolio"))
     for kind, target in targets:
         try:
-            out = (
-                build_vintage(inp, target, args.content)
-                if kind == "v"
-                else build_band(inp, target, args.content)
-            )
+            if kind == "v":
+                out = build_vintage(inp, target, args.content)
+            elif kind == "b":
+                out = build_band(inp, target, args.content)
+            else:
+                out = build_portfolio(inp, args.vintage, args.band)
             print(out)
         except (DigestBuildError, *_CONFIG_ERRORS) as exc:
             failed = True
@@ -220,6 +243,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(f"bands:    {', '.join(cfg.bands) or '-'}")
         print(f"out_dir:  {cfg.out_dir}")
         print(f"refresh:  {cfg.refresh and not args.no_refresh}")
+        print(f"portfolio: {cfg.portfolio}")
+        print(f"locked estimates: {cfg.locked_estimates or '-'}")
         print(f"notify:   {cfg.notify and not args.no_notify} (attach PDF: {cfg.attach_pdf})")
         return 0
     try:
@@ -235,6 +260,8 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(p)
     for r in result.refreshed:
         print(f"draft: {r.draft}")
+    for w in result.warnings:
+        print(f"angeltriage digest: warning: {w}", file=sys.stderr)
     for e in result.errors:
         print(f"angeltriage digest: {e}", file=sys.stderr)
     return 1 if result.errors else 0

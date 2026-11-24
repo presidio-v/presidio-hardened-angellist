@@ -546,6 +546,16 @@ generalises it.
   and stage labels, and scrubbed prior editorial text; this is enforced by an allowlist,
   a scrubber, and a fail-closed re-check against every amount and name in the export,
   and tested. Output goes to `*.draft.json`; promotion to approved content is manual.
+- **Locked positions get an explicit, labelled estimate, not a silent mark.** AngelList
+  shows no value for locked positions, which hides most of a young vintage. An optional
+  operator file supplies advisor estimates with evidence, range and confidence; the PDF
+  shows TVPI with and without them, flags positions left at cost, and prints the file's
+  method with a statement that these are estimates, not marks. Net value deducts carry on
+  the gain only. Invalid estimates fail closed; unknown names warn.
+- **One comparison across segments.** The Portfolio Digest puts each requested vintage
+  and band side by side with a de-duplicated total, so the run answers "which segment
+  carries the portfolio, and did the gate's rejects underperform everywhere?" in one page.
+  Segments keep the label the operator asked for.
 - **Scheduled, quiet by default.** `digest run` reads one private config; refresh and
   notification are off unless enabled; a notice lists file names and never attaches the
   PDF unless `attach_pdf = true`. A launchd template (weekly, Saturday morning) uses
@@ -570,7 +580,12 @@ generalises it.
   `config`, `refresh`, `runner`, `cli`); `angeltriage digest build|refresh|run`
 - `notify.send_plain` for the run notice; `contrib/digest/*.example.*`,
   `contrib/launchd/com.example.angeltriage-digest.plist`
-- Tests extended (419 total; real-TeX tests skip without `xelatex`); ruff clean;
+- Locked-value estimates (`digest/estimates.py`, `--locked-estimates`): strict schema,
+  net-of-carry valuation, estimate tiles, tables, charts and card lines; estimates never
+  leave the machine
+- Portfolio Digest (`--portfolio`): every requested segment compared plus a total, with
+  segments named by the requested label
+- Tests extended (448 total; real-TeX tests skip without `xelatex`); ruff clean;
   version → 0.8.0
 
 ## SDLC

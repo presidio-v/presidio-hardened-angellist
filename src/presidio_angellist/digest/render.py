@@ -12,21 +12,30 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from presidio_angellist.digest.estimates import (
+    Estimates,
+    est_net,
+    has_estimate,
+    value_incl_estimates,
+)
 from presidio_angellist.digest.gate import GateConfig, GateResult, gate_retro
 from presidio_angellist.digest.latex import (
     grouped_columns,
     hbar_chart,
     money,
     multiple,
+    paired_hbar,
     pct,
     short_name,
     stacked_bar,
+    stacked_rows,
     tex,
     tex_url,
 )
 from presidio_angellist.digest.metrics import (
     MULTIPLE_BUCKETS,
     AggregateMetrics,
+    Group,
     aggregate,
     gate_verdict_sentence,
 )
@@ -34,6 +43,13 @@ from presidio_angellist.digest.metrics import (
 if TYPE_CHECKING:
     from presidio_angellist.digest.config import Brand
     from presidio_angellist.digest.csvload import Position
+
+CONFIDENCE_COLOR = {"high": "dgaccent", "medium": "dgblue", "low": "dgamber"}
+EST_DISCLAIMER = (
+    "These are advisor estimates from public information, not marks. Net value deducts "
+    "carry on the gain above cost (the export's carry, 20% where empty). Locked positions "
+    "without an estimate are carried at cost and flagged."
+)
 
 STATUS_COLOR = {
     "Ahead": "dgaccent",
@@ -111,7 +127,7 @@ def preamble(brand: Brand, meta: DocMeta, logo_ext: str | None) -> str:
             rf"\IfFontExistsTF{{{brand.font}}}{{\setmainfont{{{brand.font}}}}}"
             rf"{{\setmainfont{{{brand.fallback_font}}}}}",
             r"\usepackage{xcolor,graphicx,fancyhdr,lastpage,tikz,tabularx,array,enumitem,"
-            r"booktabs,multicol,needspace}",
+            r"booktabs,multicol,needspace,xltabular}",
             r"\usepackage[most]{tcolorbox}",
             r"\usepackage[colorlinks=true,linkcolor=dgaccent,urlcolor=dgaccent]{hyperref}",
             colours,
@@ -233,7 +249,7 @@ def actions_block(content: dict[str, Any]) -> str:
         return ""
     return "\n".join(
         [
-            r"\dsec{Actions and lessons}",
+            r"\Needspace{0.55\textheight}\dsec{Actions and lessons}",
             boxed_lists(
                 [
                     ("Actions", s.get("actions", []), "dgnavy"),
@@ -363,6 +379,105 @@ def method_block(brand: Brand, as_of: str, extra: str = "") -> str:
     )
 
 
+def estimate_tile(g: Group, est: Estimates | None) -> list[tuple[str, str]]:
+    """KPI tile for TVPI including locked estimates (net, with gross in the label)."""
+    if est is None:
+        return []
+    return [
+        (
+            multiple(g.tvpi_est),
+            f"TVPI incl. locked estimates, net ({multiple(g.tvpi_est_gross)} gross)",
+        )
+    ]
+
+
+def estimates_note(est: Estimates) -> str:
+    when = f" ({est.as_of})" if est.as_of else ""
+    method = f"Method{when}: {est.method} " if est.method else ""
+    return r"{\tiny\color{dggray}" + tex(method + EST_DISCLAIMER) + "}"
+
+
+def locked_estimates_block(positions: list[Position], est: Estimates | None) -> str:
+    """Table and chart of locked positions at their estimated value (empty if no file)."""
+    locked = [p for p in positions if p.locked]
+    if est is None or not locked:
+        return ""
+    locked.sort(key=lambda p: (-value_incl_estimates(p, est), p.name))
+    rows = []
+    for p in locked:
+        e = est.for_position(p)
+        if e is None:
+            rows.append(
+                [
+                    tex(p.name),
+                    str(p.year),
+                    money(p.invested),
+                    "--",
+                    r"\textit{no estimate: carried at cost}",
+                    "--",
+                    "--",
+                    "--",
+                    money(p.invested) + r"\,$^{\dagger}$",
+                ]
+            )
+            continue
+        rows.append(
+            [
+                tex(p.name),
+                str(p.year),
+                money(p.invested),
+                tex(e.evidence.replace("_", " ")),
+                tex(e.event),
+                multiple(e.est_multiple),
+                f"{multiple(e.low)}--{multiple(e.high)}",
+                rf"\pill{{{CONFIDENCE_COLOR[e.confidence]}}}{{{e.confidence}}}",
+                money(est_net(p, e)),
+            ]
+        )
+    chart_rows = [
+        (
+            short_name(p.name),
+            p.invested,
+            value_incl_estimates(p, est),
+            CONFIDENCE_COLOR[e.confidence] if (e := est.for_position(p)) else "dggray",
+        )
+        for p in locked[:12]
+    ]
+    n_missing = sum(1 for p in locked if not has_estimate(p, est))
+    return "\n".join(
+        [
+            r"\Needspace{0.25\textheight}\dsec{Locked positions: estimated value}",
+            _table(
+                [
+                    "Company",
+                    "Year",
+                    "Invested",
+                    "Evidence",
+                    "Event",
+                    "Est. multiple",
+                    "Range",
+                    "Confidence",
+                    "Est. net value",
+                ],
+                "l r r l >{\\raggedright\\arraybackslash}X r r c r",
+                rows,
+            ),
+            (
+                r"{\tiny\color{dggray}$^{\dagger}$ "
+                + tex(f"{n_missing} locked position(s) without an estimate, at cost.")
+                + "}\\par"
+                if n_missing
+                else ""
+            ),
+            r"\begin{panel}{Locked positions: cost (grey) against estimated net value}\centering"
+            + paired_hbar(chart_rows, 9.5)
+            + r"\par\vspace{2pt}{\tiny\color{dggray}Colour = confidence: green high, blue "
+            r"medium, amber low; grey = no estimate (cost).}\end{panel}",
+            estimates_note(est),
+        ]
+    )
+
+
 def sources_line(entry: dict[str, Any]) -> str:
     links = []
     for s in entry.get("sources", []):
@@ -440,8 +555,12 @@ def build_vintage_tex(
     meta: DocMeta,
     vintage: int,
     logo_ext: str | None = None,
+    estimates: Estimates | None = None,
 ) -> str:
     gate = gate_retro(positions, cfg)
+    totals = Group()
+    for p in positions:
+        totals.add(p, estimates)
     comp: dict[str, dict[str, Any]] = content.get("companies", {})
     n = len(positions)
     total = sum(p.invested for p in positions)
@@ -478,7 +597,8 @@ def build_vintage_tex(
     if any(isinstance(x, float) for x in probs):
         tiles.append((f"{exp_up:.1f}", "expected up-rounds (12-24 mo)"))
     tiles.append((f"{passes}/{n}", f"would pass {the(label)} today"))
-    o.append(kpi_row(tiles))
+    tiles += estimate_tile(totals, estimates)
+    o.append(kpi_row(tiles, columns=4 if len(tiles) > 6 else None))
     o.append(summary_block(content))
     o.append(thesis_block(cfg, content, meta.as_of, f"The {vintage} vintage and the thesis."))
 
@@ -569,6 +689,7 @@ def build_vintage_tex(
         + r"}\par\vspace{2pt}"
     )
     o.append(gate_matrix(positions, gate, cfg))
+    o.append(locked_estimates_block(positions, estimates))
 
     # ---- cards
     o.append(r"\newpage\dsec{Company cards}")
@@ -589,6 +710,16 @@ def build_vintage_tex(
             ("Bucket", tex(cfg.bucket_label(g.bucket))),
             ("Mark", multiple(p.multiple) if p.multiple is not None else "locked"),
         ]
+        if estimates is not None and p.locked:
+            e = estimates.for_position(p)
+            facts.append(
+                (
+                    "Est. locked value",
+                    f"{money(est_net(p, e))} · {multiple(e.est_multiple)}, {tex(e.confidence)}"
+                    if e
+                    else r"none: at cost\,$^{\dagger}$",
+                )
+            )
         o.append(
             card(
                 p.name,
@@ -650,15 +781,23 @@ def gate_matrix(positions: list[Position], gate: list[GateResult], cfg: GateConf
 
 
 def _table(header: list[str], aligns: str, rows: list[list[str]]) -> str:
-    """``header`` is raw text; ``rows`` cells must already be escaped/fixed markup."""
+    """``header`` is raw text; ``rows`` cells must already be escaped/fixed markup.
+
+    Breakable across pages (xltabular), with the header repeated on each page, so a
+    long table no longer strands its section heading at the foot of a page.
+    """
+    head = " & ".join(rf"\textbf{{{tex(h)}}}" for h in header) + r"\\\midrule"
     return "\n".join(
         [
-            r"{\scriptsize\renewcommand{\arraystretch}{1.2}"
-            rf"\begin{{tabularx}}{{\textwidth}}{{@{{}}{aligns}@{{}}}}\toprule",
-            " & ".join(rf"\textbf{{{tex(h)}}}" for h in header) + r"\\\midrule",
+            r"{\scriptsize\renewcommand{\arraystretch}{1.2}\setlength{\LTpre}{2pt}"
+            r"\setlength{\LTpost}{2pt}"
+            rf"\begin{{xltabular}}{{\textwidth}}{{@{{}}{aligns}@{{}}}}\toprule",
+            head + r"\endfirsthead",
+            r"\toprule " + head + r"\endhead",
+            r"\bottomrule\endlastfoot",
         ]
         + [" & ".join(r) + r"\\" for r in rows]
-        + [r"\bottomrule\end{tabularx}}\par"]
+        + [r"\end{xltabular}}\par"]
     )
 
 
@@ -678,9 +817,10 @@ def build_aggregate_tex(
     meta: DocMeta,
     band: tuple[int, int],
     logo_ext: str | None = None,
+    estimates: Estimates | None = None,
 ) -> str:
     gate = gate_retro(positions, cfg)
-    m: AggregateMetrics = aggregate(positions, gate)
+    m: AggregateMetrics = aggregate(positions, gate, estimates=estimates)
     first, last = band
     band_s = f"{first}-{last}" if last != first else str(first)
     label = content.get("gate_label") or cfg.label
@@ -716,6 +856,7 @@ def build_aggregate_tex(
                 (pct(m.zero_share), "of marked positions at 0x"),
                 (pct(m.top1_share), "of value in the top position"),
                 (pct(m.top3_share), "of value in the top three"),
+                *estimate_tile(t, estimates),
             ]
         )
     )
@@ -797,6 +938,8 @@ def build_aggregate_tex(
             ],
         )
     )
+
+    o.append(locked_estimates_block(positions, estimates))
 
     # ---- per lead / per bucket
     o.append(r"\Needspace{0.3\textheight}\dsec{By syndicate lead}")
@@ -935,6 +1078,312 @@ def build_aggregate_tex(
             meta.as_of,
             "TVPI locked at cost carries locked positions at their cost; TVPI marked only "
             "ignores them. DPI is realized value over all capital invested. ",
+        )
+    )
+    o.append(r"\end{document}")
+    return "\n".join(x for x in o if x)
+
+
+# ---------------------------------------------------------------------------
+# Portfolio digest (every requested segment compared, plus a total)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class Segment:
+    """One requested vintage ("2026") or band ("2015-2020") and its positions."""
+
+    label: str
+    positions: list[Position]
+
+
+def _union(segments: list[Segment]) -> list[Position]:
+    seen: set[int] = set()
+    out: list[Position] = []
+    for seg in segments:
+        for p in seg.positions:
+            if id(p) not in seen:
+                seen.add(id(p))
+                out.append(p)
+    return sorted(out, key=lambda p: (p.invest_date, p.name))
+
+
+def _verdict_counts(gate: list[GateResult]) -> str:
+    c = {v: sum(1 for g in gate if g.verdict == v) for v in ("Pass", "Borderline", "Fail")}
+    return f"{c['Pass']}/{c['Borderline']}/{c['Fail']}"
+
+
+def build_portfolio_tex(
+    segments: list[Segment],
+    all_positions: list[Position],
+    cfg: GateConfig,
+    content: dict[str, Any],
+    brand: Brand,
+    meta: DocMeta,
+    logo_ext: str | None = None,
+    estimates: Estimates | None = None,
+) -> str:
+    """Compare the run's segments side by side; ``all_positions`` feeds the J-curve."""
+    est = estimates
+    union = _union(segments)
+    rows: list[tuple[str, list[Position], list[GateResult], AggregateMetrics]] = []
+    for seg in segments:
+        g = gate_retro(seg.positions, cfg)
+        rows.append((seg.label, seg.positions, g, aggregate(seg.positions, g, estimates=est)))
+    ugate = gate_retro(union, cfg)
+    um = aggregate(union, ugate, estimates=est)
+    rows_t = [*rows, ("Total", union, ugate, um)]
+    verdicts: dict[str, str] = content.get("segments", {})
+    seg_of: dict[int, str] = {}
+    for seg in segments:
+        for p in seg.positions:
+            seg_of[id(p)] = seg_of[id(p)] + ", " + seg.label if id(p) in seg_of else seg.label
+    label = content.get("gate_label") or cfg.label
+    t = um.total
+    labels = ", ".join(s.label for s in segments)
+
+    o = [preamble(brand, meta, logo_ext)]
+    o.append(
+        title_block(
+            f"{brand.header_text} · {meta.quarter} · as of {meta.as_of}",
+            f"Portfolio Digest {meta.quarter}",
+            f"AngelList syndicate positions compared across {labels}, checked against the "
+            f"{brand.name} thesis and {the(label)}.",
+            content.get("headline", ""),
+        )
+    )
+    tiles = [
+        (str(t.n), f"positions ({um.locked} locked)"),
+        (money(t.invested), "invested"),
+        (money(t.realized), "realized"),
+        (multiple(t.tvpi_marked), "TVPI, marked only"),
+        (multiple(t.tvpi), "TVPI, locked at cost"),
+        *estimate_tile(t, est),
+        (multiple(um.dpi), "DPI, all capital invested"),
+        (pct(um.zero_share), "of marked positions at 0x"),
+    ]
+    o.append(kpi_row(tiles, columns=4))
+    o.append(summary_block(content, with_extremes=False))
+
+    # ---- comparison table
+    o.append(r"\Needspace{0.3\textheight}\dsec{Segments compared}")
+    head = ["Segment", "Positions", "Invested", "Realized", "Unreal.", "TVPI marked",
+            "TVPI at cost"]  # fmt: skip
+    if est is not None:
+        head.append("TVPI incl. est. (net)")
+    head += ["DPI", "0x", "Top-1", "Gate P/B/F", "Verdict"]
+    trows = []
+    for i, (lab, _ps, g, m) in enumerate(rows_t):
+        gt = m.total
+        cells = [
+            (r"\textbf{" + tex(lab) + "}") if lab == "Total" else tex(lab),
+            f"{gt.n} ({m.locked})",
+            money(gt.invested),
+            money(gt.realized),
+            money(m.unrealized),
+            multiple(gt.tvpi_marked),
+            multiple(gt.tvpi),
+        ]
+        if est is not None:
+            cells.append(multiple(gt.tvpi_est))
+        cells += [
+            multiple(m.dpi),
+            pct(m.zero_share),
+            pct(m.top1_share),
+            _verdict_counts(g),
+            tex(verdicts.get(lab, "")),
+        ]
+        if i == len(rows_t) - 1:
+            cells[0] = r"\midrule " + cells[0]
+        trows.append(cells)
+    aligns = "l " + "r " * (len(head) - 2) + ">{\\raggedright\\arraybackslash}X"
+    o.append(
+        r"{\tiny\setlength{\tabcolsep}{3pt}"
+        + _table(head, aligns, trows).replace(r"{\scriptsize", "{", 1)
+        + "}"
+    )
+    o.append(
+        r"{\tiny\color{dggray}"
+        + tex(
+            "Positions: total (locked). Unreal.: unrealized value of marked positions. "
+            "Top-1: share of the segment's value (locked at cost) in its largest position. "
+            "Total: every position in the segments above, counted once."
+        )
+        + "}"
+    )
+
+    # ---- charts
+    o.append(r"\Needspace{0.35\textheight}\dsec{Portfolio at a glance}")
+    legend = [("TVPI marked", "dggray!70"), ("TVPI at cost", "dgblue")]
+    if est is not None:
+        legend.append(("TVPI incl. estimates", "dgaccent"))
+    groups = []
+    for lab, _ps, _g, m in rows_t:
+        cols = [[(m.total.tvpi_marked or 0.0, "dggray!70")], [(m.total.tvpi or 0.0, "dgblue")]]
+        if est is not None:
+            cols.append([(m.total.tvpi_est or 0.0, "dgaccent")])
+        groups.append((lab, cols))
+    o.append(
+        r"\begin{panel}{TVPI by segment}\centering"
+        + grouped_columns(groups, legend, height_cm=3.4, fmt=multiple)
+        + r"\end{panel}"
+    )
+    buckets = bucket_order(cfg, {g.bucket for _, _, gs, _ in rows_t for g in gs})
+    bcol = bucket_colours(cfg, buckets)
+    brows = []
+    for lab, ps, gs, _m in rows_t:
+        inv: dict[str, float] = {}
+        for p, g in zip(ps, gs, strict=True):
+            inv[g.bucket] = inv.get(g.bucket, 0.0) + p.invested
+        tot = sum(inv.values()) or 1.0
+        brows.append(
+            (
+                lab,
+                [
+                    (inv.get(b, 0.0), bcol[b], f"{inv.get(b, 0.0) / tot * 100:.0f}%")
+                    for b in buckets
+                ],
+            )  # fmt: skip
+        )
+    o.append(
+        r"\begin{panel}{Capital by thesis bucket, per segment (100\%)}\centering"
+        + stacked_rows(brows, [(cfg.bucket_label(b), bcol[b]) for b in buckets], 12.5)
+        + r"\end{panel}"
+    )
+    years: dict[int, Group] = {}
+    for p in all_positions:
+        years.setdefault(p.year, Group()).add(p, est)
+    ygroups = []
+    for yr, g in sorted(years.items()):
+        cols = [[(g.tvpi or 0.0, "dgblue")]]
+        if est is not None:
+            cols.append([(g.tvpi_est or 0.0, "dgaccent")])
+        ygroups.append((str(yr), cols))
+    ylegend = [("TVPI at cost", "dgblue")] + (
+        [("TVPI incl. estimates", "dgaccent")] if est is not None else []
+    )
+    o.append(r"\begin{tcbraster}[raster columns=2,raster column skip=10pt,raster equal height]")
+    o.append(
+        r"\begin{panel}{TVPI by vintage year (J-curve view)}\centering"
+        + grouped_columns(ygroups, ylegend, height_cm=3.0, width_cm=7.6, fmt=multiple)
+        + r"\par\vspace{2pt}{\tiny\color{dggray}All positions in the export, by invest year."
+        r"}\end{panel}"
+    )
+    drows = [(lab, m.dpi, "dgnavy" if lab == "Total" else "dgblue") for lab, _, _, m in rows_t]
+    o.append(
+        r"\begin{panel}{DPI by segment}\centering"
+        + hbar_chart(
+            drows,
+            4.2,
+            max([d[1] or 0.0 for d in drows] + [1.0]) * 1.2,
+            multiple,
+            refs=[(1.0, "1.0x", "dggray")],
+        )  # fmt: skip
+        + r"\end{panel}"
+    )
+    o.append(r"\end{tcbraster}")
+
+    # ---- gate per segment
+    o.append(r"\Needspace{0.3\textheight}\dsec{Gate retro-check by segment}")
+    grows = []
+    for lab, _ps, _gs, m in rows_t:
+        parts = []
+        for v in ("Pass", "Borderline", "Fail"):
+            gv = m.by_verdict[v]
+            parts.append((float(gv.n), VERDICT_COLOR[v], f"{gv.n} · {multiple(gv.tvpi)}"))
+        grows.append((lab, parts))
+    o.append(
+        r"\begin{panel}{Positions by gate verdict, with the TVPI (at cost) of each group}"
+        r"\centering"
+        + stacked_rows(
+            grows, [(v, VERDICT_COLOR[v]) for v in ("Pass", "Borderline", "Fail")], 12.5
+        )
+        + r"\par\vspace{2pt}{\tiny\color{dggray}"
+        + tex(gate_verdict_sentence(um))
+        + r"}\end{panel}"
+    )
+
+    # ---- top value drivers
+    o.append(r"\Needspace{0.3\textheight}\dsec{Top value drivers across the portfolio}")
+    drivers = sorted(union, key=lambda p: -value_incl_estimates(p, est))[:10]
+    o.append(
+        _table(
+            ["Company", "Segment", "Year", "Invested", "Value", "Multiple", "Basis"],
+            "X l r r r r l",
+            [
+                [
+                    tex(p.name),
+                    tex(seg_of.get(id(p), "")),
+                    str(p.year),
+                    money(p.invested),
+                    money(value_incl_estimates(p, est)),
+                    multiple(value_incl_estimates(p, est) / p.invested if p.invested else None),
+                    "mark"
+                    if p.net is not None
+                    else ("estimate" if has_estimate(p, est) else "cost"),
+                ]
+                for p in drivers
+            ],
+        )
+    )
+    o.append(
+        r"{\tiny\color{dggray}"
+        + tex(
+            "Value: net value incl. realized; locked positions at their estimated net value "
+            "where an estimate exists, else at cost."
+        )  # fmt: skip
+        + "}"
+    )
+
+    # ---- biggest locked estimates
+    if est is not None:
+        locked = [p for p in union if has_estimate(p, est)]
+        locked.sort(key=lambda p: -value_incl_estimates(p, est))
+        if locked:
+            o.append(r"\Needspace{0.25\textheight}\dsec{Biggest locked estimates}")
+            trow = []
+            for p in locked[:8]:
+                e = est.for_position(p)
+                trow.append(
+                    [
+                        tex(p.name),
+                        tex(seg_of.get(id(p), "")),
+                        money(p.invested),
+                        tex(e.evidence.replace("_", " ")),
+                        tex(e.event),
+                        multiple(e.est_multiple),
+                        rf"\pill{{{CONFIDENCE_COLOR[e.confidence]}}}{{{e.confidence}}}",
+                        money(est_net(p, e)),
+                    ]
+                )
+            o.append(
+                _table(
+                    [
+                        "Company",
+                        "Segment",
+                        "Invested",
+                        "Evidence",
+                        "Event",
+                        "Est. multiple",
+                        "Confidence",
+                        "Est. net value",
+                    ],  # fmt: skip
+                    "l l r l >{\\raggedright\\arraybackslash}X r c r",
+                    trow,
+                )
+            )
+            o.append(estimates_note(est))
+
+    o.append(actions_block(content))
+    o.append(
+        method_block(
+            brand,
+            meta.as_of,
+            "Segments are the vintages and bands requested in this run, labelled as requested; "
+            "the total counts each position once. TVPI locked at cost carries locked positions "
+            "at cost; TVPI marked only ignores them; TVPI incl. estimates uses the advisor "
+            "estimates for locked positions where given. DPI is realized value over all capital "
+            "invested. ",
         )
     )
     o.append(r"\end{document}")

@@ -43,6 +43,26 @@ Minor release: a new, additive `angeltriage digest` command family and the
   current quarter, optional refresh, one PDF per vintage and band, optional email notice
   via `notify.send_plain` (file names only unless `attach_pdf = true`). Neutral examples
   in `contrib/digest/` and a weekly launchd template in `contrib/launchd/`.
+- **Locked-value estimates** (`--locked-estimates FILE`, `locked_estimates` in the run
+  config): advisor estimates for positions whose AngelList value is locked (evidence,
+  event, post-money, estimated multiple, range, confidence, sources). Gross value is
+  invested × m; net value deducts carry on the gain (the export's `Carry`, 20% where
+  empty). Vintage and aggregate digests gain a "TVPI incl. locked estimates" tile (net,
+  gross in the label), a "Locked positions: estimated value" table and cost-vs-estimate
+  chart, a method note, and an "Est. locked value" line on vintage cards. Positions
+  without an estimate stay at cost and are flagged. The file is validated strictly
+  (unknown evidence, negative multiple, `low > high` are errors); a name not in the
+  export warns. Example: `contrib/digest/locked-estimates.example.json`.
+- **Portfolio Digest** (`--portfolio`, `portfolio = true`): one more PDF,
+  `<prefix>-Portfolio-Digest-<quarter>.pdf`, comparing every vintage and band requested
+  in the run plus a total (each position once): KPI tiles, a comparison table (positions,
+  invested, realized, unrealized, TVPI marked / at cost / incl. estimates, DPI, 0x share,
+  top-1 share, gate pass/borderline/fail, segment verdict), TVPI per segment, capital by
+  thesis bucket per segment, TVPI by vintage year (J-curve), DPI per segment, gate
+  verdicts per segment with each group's TVPI, top value drivers and biggest locked
+  estimates. Editorial text comes from `portfolio.json` in the content directory.
+  Segments carry the requested label (a band `2015-2020` stays `2015-2020` even if its
+  first position is in 2017).
 - Environment variables `ANGELTRIAGE_XELATEX` and `ANGELTRIAGE_DIGEST_MODEL`.
 
 ### Security
@@ -60,9 +80,16 @@ Minor release: a new, additive `angeltriage digest` command family and the
   leads, fund vehicles and the investing entity; it is re-checked against every amount
   and name in the export before it is sent, and a hit skips that company.
 - Digest PDFs, `.tex` sources and drafts are written owner-only (`0600`).
+- Locked-estimate and portfolio text (events, method, segment verdicts, source labels)
+  goes through the same escaping and pre-flight scan; estimate source links are limited to
+  `http(s)`. Estimates are local inputs only and are never sent to a model.
 
 ### Changed
 
+- Digest tables break across pages (`xltabular`) with a repeated header, so long tables no
+  longer strand their section heading at the foot of a page.
+- A locked position that has already paid out cash keeps that cash in the "locked at cost"
+  and "incl. estimates" values (previously only the invested amount was counted).
 - `contrib/` added. CONTRIBUTING no longer says the package invokes no subprocesses:
   the digest runs `xelatex`.
 

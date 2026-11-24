@@ -33,8 +33,8 @@ The public API is:
 
 6. **The digest surface (0.8.0+)**: every name in `presidio_angellist.digest.__all__`, the
    `angeltriage digest build|refresh|run` flags and exit codes (0 ok, 1 a digest failed,
-   2 usage/config error), the gate-config, brand, content and run-config schemas
-   (`contrib/digest/`), and `ANGELTRIAGE_XELATEX` / `ANGELTRIAGE_DIGEST_MODEL`. Two
+   2 usage/config error), the gate-config, brand, content, portfolio-content, locked-estimates and
+   run-config schemas (`contrib/digest/`), and `ANGELTRIAGE_XELATEX` / `ANGELTRIAGE_DIGEST_MODEL`. Two
    digest invariants are treated like the guarantees below: untrusted text is always
    LaTeX-escaped and `xelatex` never runs with shell escape; and the advisor refresh never
    sends an amount, cap, valuation, mark, lead, fund vehicle or investor name.

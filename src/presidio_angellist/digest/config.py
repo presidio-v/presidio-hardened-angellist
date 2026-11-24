@@ -226,6 +226,9 @@ def normalise_content(raw: Any) -> dict[str, Any]:
         k: _str_list(sm.get(k))
         for k in ("paragraphs", "strongest", "weakest", "actions", "lessons_for_gate")
     }
+    seg = raw.get("segments")
+    if isinstance(seg, dict):
+        c["segments"] = {str(k): _s(v) for k, v in seg.items() if _s(v)}
     for coll in ("companies", "holdings"):
         src = raw.get(coll)
         if isinstance(src, dict):

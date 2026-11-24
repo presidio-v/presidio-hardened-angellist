@@ -4,7 +4,8 @@ Orchestration: build vintage and band digests, and the scheduled ``digest run``.
 ``digest run --config digest.toml`` reads a private run config (see
 ``contrib/digest/digest.example.toml``), picks the newest export in ``csv_dir``,
 determines the current quarter, optionally refreshes editorial drafts, builds one
-PDF per vintage and per band, and optionally sends a notification. Paths in the
+PDF per vintage and per band (plus, with ``portfolio = true``, one Portfolio Digest
+comparing them), and optionally sends a notification. Paths in the
 config may contain ``{quarter}`` and resolve relative to the config file.
 """
 
@@ -28,8 +29,15 @@ from presidio_angellist.digest.config import (
     vintage_content_path,
 )
 from presidio_angellist.digest.csvload import in_years, load_positions, newest_export
+from presidio_angellist.digest.estimates import Estimates, load_estimates
 from presidio_angellist.digest.gate import GateConfig, load_gate_config
-from presidio_angellist.digest.render import DocMeta, build_aggregate_tex, build_vintage_tex
+from presidio_angellist.digest.render import (
+    DocMeta,
+    Segment,
+    build_aggregate_tex,
+    build_portfolio_tex,
+    build_vintage_tex,
+)
 
 if TYPE_CHECKING:
     from presidio_angellist.digest.csvload import Position
@@ -45,6 +53,20 @@ def current_quarter(today: date | None = None) -> str:
 
 def output_name(brand: Brand, quarter: str, label: str) -> str:
     return f"{brand.file_stem}-Digest-{quarter}-{label}.pdf"
+
+
+def portfolio_output_name(brand: Brand, quarter: str) -> str:
+    return f"{brand.file_stem}-Portfolio-Digest-{quarter}.pdf"
+
+
+def portfolio_content_path(content_dir: Path) -> Path:
+    return content_dir / "portfolio.json"
+
+
+def band_label(band: str) -> str:
+    """The requested label ("2015-2020"), even if the first position is later."""
+    first, last = parse_band(band)
+    return f"{first}-{last}" if last != first else str(first)
 
 
 def _logo_ext(brand: Brand) -> str | None:
@@ -67,6 +89,7 @@ class Inputs:
     keep_tex: bool = False
     xelatex: str | None = None
     as_of_override: str | None = None
+    estimates: Estimates | None = None
 
 
 def build_vintage(inp: Inputs, vintage: int, content_path: Path | None = None) -> Path:
@@ -83,7 +106,14 @@ def build_vintage(inp: Inputs, vintage: int, content_path: Path | None = None) -
         inp.state,
     )
     tex = build_vintage_tex(
-        positions, inp.gate, content, inp.brand, meta, vintage, _logo_ext(inp.brand)
+        positions,
+        inp.gate,
+        content,
+        inp.brand,
+        meta,
+        vintage,
+        _logo_ext(inp.brand),
+        estimates=inp.estimates,
     )
     out = inp.out_dir / output_name(inp.brand, inp.quarter, f"{vintage}-vintage")
     return compile_pdf(tex, out, logo=inp.brand.logo, xelatex=inp.xelatex, keep_tex=inp.keep_tex)
@@ -100,10 +130,58 @@ def build_band(inp: Inputs, band: str, content_path: Path | None = None) -> Path
     as_of = inp.as_of_override or content.get("as_of") or inp.as_of
     meta = DocMeta(inp.quarter, as_of, label, inp.version, inp.state)
     tex = build_aggregate_tex(
-        positions, inp.gate, content, inp.brand, meta, (first, last), _logo_ext(inp.brand)
+        positions,
+        inp.gate,
+        content,
+        inp.brand,
+        meta,
+        (first, last),
+        _logo_ext(inp.brand),
+        estimates=inp.estimates,
     )
     out = inp.out_dir / output_name(inp.brand, inp.quarter, label)
     return compile_pdf(tex, out, logo=inp.brand.logo, xelatex=inp.xelatex, keep_tex=inp.keep_tex)
+
+
+def build_portfolio(
+    inp: Inputs,
+    vintages: list[int],
+    bands: list[str],
+    content_path: Path | None = None,
+) -> Path:
+    """One Portfolio Digest comparing every requested vintage and band, plus a total."""
+    segments = [Segment(str(v), in_years(inp.positions, v)) for v in vintages]
+    for b in bands:
+        first, last = parse_band(b)
+        segments.append(Segment(band_label(b), in_years(inp.positions, first, last)))
+    segments = [s for s in segments if s.positions]
+    if not segments:
+        raise DigestConfigError("portfolio digest: no positions in the requested segments")
+    content = load_content(content_path or portfolio_content_path(inp.content_dir))
+    as_of = inp.as_of_override or content.get("as_of") or inp.as_of
+    meta = DocMeta(inp.quarter, as_of, "portfolio", inp.version, inp.state)
+    tex = build_portfolio_tex(
+        segments,
+        inp.positions,
+        inp.gate,
+        content,
+        inp.brand,
+        meta,
+        _logo_ext(inp.brand),
+        estimates=inp.estimates,
+    )
+    out = inp.out_dir / portfolio_output_name(inp.brand, inp.quarter)
+    return compile_pdf(tex, out, logo=inp.brand.logo, xelatex=inp.xelatex, keep_tex=inp.keep_tex)
+
+
+def estimate_warnings(est: Estimates | None, positions: list[Position]) -> list[str]:
+    """Warnings for estimate names that match no position in the export."""
+    if est is None:
+        return []
+    unknown = est.unknown_names(positions)
+    for _ in unknown:
+        _log.warning("presidio_angellist: a locked estimate names a company not in the export")
+    return [f"locked estimate for a company not in the export: {n}" for n in unknown]
 
 
 # ---------------------------------------------------------------------------
@@ -131,6 +209,8 @@ class RunConfig:
     state: str = "draft"
     keep_tex: bool = False
     xelatex: str | None = None
+    locked_estimates: Path | None = None
+    portfolio: bool = False
 
 
 def _path(raw: Any, base: Path, quarter: str) -> Path:
@@ -186,6 +266,12 @@ def parse_run_config(data: dict[str, Any], base: Path, quarter: str) -> RunConfi
         state=str(data.get("state", "draft")),
         keep_tex=_bool(data, "keep_tex"),
         xelatex=str(data["xelatex"]) if data.get("xelatex") else None,
+        locked_estimates=(
+            _path(data["locked_estimates"], base, quarter)
+            if data.get("locked_estimates")
+            else None
+        ),
+        portfolio=_bool(data, "portfolio"),
     )
 
 
@@ -201,6 +287,7 @@ class RunResult:
     pdfs: list[Path] = field(default_factory=list)
     refreshed: list[RefreshReport] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
 
 
 def run(
@@ -217,8 +304,10 @@ def run(
     positions = load_positions(csv)
     gate = load_gate_config(cfg.gate_config)
     brand = load_brand(cfg.brand)
+    estimates = load_estimates(cfg.locked_estimates)
     as_of = (today or date.today()).isoformat()
     result = RunResult(quarter=quarter, csv=csv)
+    result.warnings = estimate_warnings(estimates, positions)
     inp = Inputs(
         positions=positions,
         gate=gate,
@@ -231,6 +320,7 @@ def run(
         state=cfg.state,
         keep_tex=cfg.keep_tex,
         xelatex=cfg.xelatex,
+        estimates=estimates,
     )
     if cfg.refresh if do_refresh is None else do_refresh:
         _refresh_all(cfg, positions, brand, client, result)
@@ -244,6 +334,11 @@ def run(
             result.pdfs.append(build_band(inp, b))
         except Exception as exc:  # noqa: BLE001
             result.errors.append(f"band {b}: {exc}")
+    if cfg.portfolio:
+        try:
+            result.pdfs.append(build_portfolio(inp, cfg.vintages, cfg.bands))
+        except Exception as exc:  # noqa: BLE001
+            result.errors.append(f"portfolio: {exc}")
     if cfg.notify if do_notify is None else do_notify:
         _notify(cfg, result)
     return result
