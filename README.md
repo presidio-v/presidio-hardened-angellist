@@ -385,6 +385,7 @@ in this repository:
 | Editorial content (JSON) | `tests/fixtures/digest/*.json` | `vintage-<year>.json` (or `content.json`) and `agg-<first>-<last>.json`: headline, thesis, summary, per-company status/signals/forecast/risk/sources. |
 | Locked estimates (JSON, optional) | [`contrib/digest/locked-estimates.example.json`](contrib/digest/locked-estimates.example.json) | Advisor estimates for locked positions: evidence (`priced_round`, `acquisition`, `shutdown`, `down_round`, `distress`, `none`), event, post-money, estimated multiple, range, confidence, sources. |
 | Portfolio content (JSON, optional) | `tests/fixtures/digest/portfolio.json` | `portfolio.json` for `--portfolio`: headline, a verdict per segment label, summary, lessons, actions. |
+| Market benchmarks (JSON, optional) | [`contrib/digest/market.example.json`](contrib/digest/market.example.json) | For `--market`: cited sources, vintage quartiles, stage medians, graduation, sector and regional shares, company locations, commentary. |
 | Run config (TOML/JSON) | [`contrib/digest/digest.example.toml`](contrib/digest/digest.example.toml) | For scheduled runs: paths, vintages, bands, estimates, portfolio, refresh and notify switches. |
 
 ```bash
@@ -421,6 +422,17 @@ angeltriage digest build --csv-dir … --gate-config … --brand … --content-d
   --vintage 2026 --band 2015-2020 --band 2021-2025 \
   --locked-estimates ~/private/angellist/locked-estimates.json --portfolio
 ```
+
+**Market comparison.** `--market FILE` adds `<prefix>-Market-Comparison-<quarter>.pdf`:
+the same segments and total, compared with published venture benchmarks you collect in a
+private JSON file (schema: [`contrib/digest/market.example.json`](contrib/digest/market.example.json)).
+It covers returns by vintage year against the market p25–p75 band and median, regional,
+sector and stage mix against market shares of dollars, entry post-money against the
+stage/year median, graduation rates, your commentary and a numbered sources list; every
+market number cites its source id. A segment is compared with the market period that shares
+the most calendar years with it (a `2015-2020` band uses a `2017-2020` market period).
+Market figures are fund-level net benchmarks; an angel book is not a fund, so the PDF says
+so under the returns chart.
 
 A weekly Saturday-morning launchd template is in
 [`contrib/launchd/com.example.angeltriage-digest.plist`](contrib/launchd/com.example.angeltriage-digest.plist).

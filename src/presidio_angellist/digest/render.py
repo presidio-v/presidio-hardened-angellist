@@ -44,6 +44,7 @@ from presidio_angellist.digest.metrics import (
 if TYPE_CHECKING:
     from presidio_angellist.digest.config import Brand
     from presidio_angellist.digest.csvload import Position
+    from presidio_angellist.digest.market import Market
 
 CONFIDENCE_COLOR = {"high": "dgaccent", "medium": "dgblue", "low": "dgamber"}
 EST_DISCLAIMER = (
@@ -410,6 +411,34 @@ GLOSSARY: tuple[tuple[str, str, str], ...] = (
         r"P\(up-round\)",
         "Advisor's judgement of the chance of a priced round "
         "above our entry cap within 12-24 months.",
+    ),
+    (
+        "p25 / p75 (quartiles)",
+        r"\bp(?:25|75)\b|[Qq]uartiles?",
+        "The 25th and 75th percentiles of a benchmark: a quarter of funds sit below p25, "
+        "a quarter above p75; the band between them is the middle half.",
+    ),
+    (
+        "Median",
+        r"\b[Mm]edian\b",
+        "The middle value: half of the observations are above it, half below.",
+    ),
+    (
+        "Vintage",
+        r"\b[Vv]intages?\b",
+        "The year an investment (or a fund) was made; returns are compared within a vintage.",
+    ),
+    (
+        "Graduation rate",
+        r"\b[Gg]raduation\b",
+        "The share of companies at one stage that raise the next round (e.g. seed to "
+        "Series A) within a given window.",
+    ),
+    (
+        "Over-/under-weight",
+        r"\b(?:[Oo]ver|[Uu]nder)-weight\b",
+        "How much larger (or smaller) a portfolio's share of capital in a segment is than "
+        "the market's share of dollars, in percentage points.",
     ),
     (
         "Pro-rata",
@@ -1225,8 +1254,12 @@ def build_portfolio_tex(
     meta: DocMeta,
     logo_ext: str | None = None,
     estimates: Estimates | None = None,
+    market: Market | None = None,
 ) -> str:
-    """Compare the run's segments side by side; ``all_positions`` feeds the J-curve."""
+    """Compare the run's segments side by side; ``all_positions`` feeds the J-curve.
+
+    With ``market``, the J-curve chart also draws the market median TVPI per vintage.
+    """
     est = estimates
     union = _union(segments)
     rows: list[tuple[str, list[Position], list[GateResult], AggregateMetrics]] = []
@@ -1365,12 +1398,27 @@ def build_portfolio_tex(
     ylegend = [("TVPI at cost", "dgblue")] + (
         [("TVPI incl. estimates", "dgaccent")] if est is not None else []
     )
+    yline = None
+    ynote = ""
+    if market is not None:
+        yrs = sorted(years)
+        yline = [market.vintages[y].median if y in market.vintages else None for y in yrs]
+        if any(v is not None for v in yline):
+            ylegend.append(("market median", "dgamber"))
+            ynote = (
+                " Market median TVPI: "
+                + market.cite(market.vintages[y].source for y in yrs if y in market.vintages)
+                + "."
+            )
+        else:
+            yline = None
     o.append(r"\begin{tcbraster}[raster columns=2,raster column skip=10pt,raster equal height]")
     o.append(
         r"\begin{panel}{TVPI by vintage year (J-curve view)}\centering"
-        + grouped_columns(ygroups, ylegend, height_cm=3.0, width_cm=7.6, fmt=multiple)
-        + r"\par\vspace{2pt}{\tiny\color{dggray}All positions in the export, by invest year."
-        r"}\end{panel}"
+        + grouped_columns(ygroups, ylegend, height_cm=3.0, width_cm=7.6, fmt=multiple, line=yline)
+        + r"\par\vspace{2pt}{\tiny\color{dggray}"
+        + tex("All positions in the export, by invest year." + ynote)
+        + r"}\end{panel}"
     )
     drows = [(lab, m.dpi, "dgnavy" if lab == "Total" else "dgblue") for lab, _, _, m in rows_t]
     o.append(

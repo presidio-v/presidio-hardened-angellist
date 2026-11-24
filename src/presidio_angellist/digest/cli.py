@@ -3,7 +3,8 @@
 
     angeltriage digest build   --csv-dir DIR --gate-config FILE --out-dir DIR \\
                                [--vintage 2026] [--band 2017-2020] [--brand FILE] \\
-                               [--content-dir DIR] [--locked-estimates FILE] [--portfolio]
+                               [--content-dir DIR] [--locked-estimates FILE] [--portfolio] \\
+                               [--market FILE]
     angeltriage digest refresh --csv-dir DIR --content-dir DIR [--vintage Y] \\
                                [--band A-B] [--model M]
     angeltriage digest run     --config digest.toml [--dry-run] [--no-refresh] [--no-notify]
@@ -34,9 +35,11 @@ from presidio_angellist.digest.csvload import (
 )
 from presidio_angellist.digest.estimates import load_estimates
 from presidio_angellist.digest.gate import GateConfigError, load_gate_config
+from presidio_angellist.digest.market import load_market, market_warnings
 from presidio_angellist.digest.runner import (
     Inputs,
     build_band,
+    build_market,
     build_portfolio,
     build_vintage,
     current_quarter,
@@ -86,6 +89,14 @@ def build_parser() -> argparse.ArgumentParser:
         help="JSON of advisor value estimates for locked positions.",
     )
     b.add_argument(
+        "--market",
+        type=Path,
+        default=None,
+        metavar="FILE",
+        help="VC market benchmark JSON; also builds the Market Comparison PDF for the "
+        "requested segments.",
+    )
+    b.add_argument(
         "--portfolio",
         action="store_true",
         help="Also build one Portfolio Digest comparing every --vintage and --band "
@@ -132,6 +143,7 @@ def _cmd_build(args: argparse.Namespace) -> int:
     try:
         _, positions = _positions(args)
         estimates = load_estimates(args.locked_estimates)
+        market = load_market(args.market)
         inp = Inputs(
             positions=positions,
             gate=load_gate_config(args.gate_config),
@@ -146,25 +158,30 @@ def _cmd_build(args: argparse.Namespace) -> int:
             xelatex=args.xelatex,
             as_of_override=args.as_of,
             estimates=estimates,
+            market=market,
         )
         for b in args.band:
             parse_band(b)
     except _CONFIG_ERRORS as exc:
         return _err(str(exc))
-    for w in estimate_warnings(estimates, positions):
+    for w in estimate_warnings(estimates, positions) + market_warnings(market, positions):
         print(f"angeltriage digest: warning: {w}", file=sys.stderr)
     failed = False
     targets = [("v", v) for v in args.vintage] + [("b", b) for b in args.band]
     if args.portfolio:
         targets.append(("p", "portfolio"))
+    if market is not None:
+        targets.append(("m", "market"))
     for kind, target in targets:
         try:
             if kind == "v":
                 out = build_vintage(inp, target, args.content)
             elif kind == "b":
                 out = build_band(inp, target, args.content)
-            else:
+            elif kind == "p":
                 out = build_portfolio(inp, args.vintage, args.band)
+            else:
+                out = build_market(inp, args.vintage, args.band)
             print(out)
         except (DigestBuildError, *_CONFIG_ERRORS) as exc:
             failed = True
@@ -245,6 +262,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
         print(f"refresh:  {cfg.refresh and not args.no_refresh}")
         print(f"portfolio: {cfg.portfolio}")
         print(f"locked estimates: {cfg.locked_estimates or '-'}")
+        print(f"market:   {cfg.market or '-'}")
         print(f"notify:   {cfg.notify and not args.no_notify} (attach PDF: {cfg.attach_pdf})")
         return 0
     try:

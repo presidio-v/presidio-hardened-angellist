@@ -63,6 +63,25 @@ Minor release: a new, additive `angeltriage digest` command family and the
   estimates. Editorial text comes from `portfolio.json` in the content directory.
   Segments carry the requested label (a band `2015-2020` stays `2015-2020` even if its
   first position is in 2017).
+- **VC market comparison** (`--market FILE`, `market = "…"` in the run config): reads an
+  operator benchmark file (sources, vintage TVPI quartiles and median DPI, stage round and
+  post-money medians, graduation rates, sector and regional shares of dollars/deals, a
+  company-location map, commentary) and builds `<prefix>-Market-Comparison-<quarter>.pdf`
+  for the run's segments plus a total: KPI tiles (TVPI at cost against the market median
+  for the vintage mix, capital outside the US, on-thesis share against the market,
+  entry post-money against the stage/year median), TVPI and DPI by invest year against
+  the market p25–p75 band and median, capital by region and by thesis bucket per segment
+  against the market, over/under-weight bars, AI shown separately, capital by entry stage,
+  an entry-price strip chart, graduation rates (with the portfolio's own share when locked
+  estimates are given), commentary, a numbered sources list, glossary and method. Every
+  market number cites its source id. A segment is compared with the market period that
+  shares the most years with it. The file is validated strictly (unknown source id, share
+  or rate outside 0–1, quartiles out of order, unknown stage/scope, bad period); a
+  `company_geo` name not in the export warns. The Portfolio Digest's J-curve chart also
+  draws the market median TVPI when `--market` is given. Example:
+  `contrib/digest/market.example.json`.
+- Glossary terms for quartiles (p25/p75), median, vintage, graduation rate and
+  over/under-weight.
 - Environment variables `ANGELTRIAGE_XELATEX` and `ANGELTRIAGE_DIGEST_MODEL`.
 
 ### Security
@@ -83,6 +102,9 @@ Minor release: a new, additive `angeltriage digest` command family and the
 - Locked-estimate and portfolio text (events, method, segment verdicts, source labels)
   goes through the same escaping and pre-flight scan; estimate source links are limited to
   `http(s)`. Estimates are local inputs only and are never sent to a model.
+- Market-file text (labels, commentary, regions, buckets, basis, source labels) is escaped
+  like all other content; source links are limited to `http(s)`. The market file is a
+  local input and is never sent anywhere.
 
 ### Changed
 

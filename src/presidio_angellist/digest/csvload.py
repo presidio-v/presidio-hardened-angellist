@@ -81,6 +81,7 @@ class Position:
     carry: str = ""
     entity: str = ""
     fund_name: str = ""
+    investment_type: str = ""  # "Syndicate" / "Fund"
 
     @property
     def year(self) -> int:
@@ -160,6 +161,7 @@ def parse_positions(text: str) -> list[Position]:
                 carry=_cell(row, "Carry"),
                 entity=_cell(row, "Investment Entity"),
                 fund_name=_cell(row, "Fund Name"),
+                investment_type=_cell(row, "Investment Type"),
             )
         )
     return sorted(out, key=lambda p: (p.invest_date, p.name))

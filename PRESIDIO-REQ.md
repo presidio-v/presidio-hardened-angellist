@@ -556,6 +556,13 @@ generalises it.
   and band side by side with a de-duplicated total, so the run answers "which segment
   carries the portfolio, and did the gate's rejects underperform everywhere?" in one page.
   Segments keep the label the operator asked for.
+- **Market context, cited and caveated.** An optional operator file of published
+  benchmarks puts the book next to the venture market: returns by vintage against the
+  fund quartile band, regional, sector and stage mix against market shares, entry prices
+  against stage medians, and graduation rates. Every number from the file cites a source
+  id and the PDF lists the sources; a caveat states that fund-level net benchmarks are
+  not like-for-like with a deal-by-deal angel book. Periods are matched to the requested
+  segment labels by the most overlapping years. Invalid figures fail closed.
 - **Scheduled, quiet by default.** `digest run` reads one private config; refresh and
   notification are off unless enabled; a notice lists file names and never attaches the
   PDF unless `attach_pdf = true`. A launchd template (weekly, Saturday morning) uses
@@ -585,7 +592,10 @@ generalises it.
   leave the machine
 - Portfolio Digest (`--portfolio`): every requested segment compared plus a total, with
   segments named by the requested label
-- Tests extended (448 total; real-TeX tests skip without `xelatex`); ruff clean;
+- VC market comparison (`digest/market.py`, `digest/market_render.py`, `--market`):
+  Market Comparison PDF with per-chart source citations; market median on the
+  Portfolio Digest's J-curve
+- Tests extended (495 total; real-TeX tests skip without `xelatex`); ruff clean;
   version → 0.8.0
 
 ## SDLC

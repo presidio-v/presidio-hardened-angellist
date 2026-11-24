@@ -12,7 +12,8 @@ Two modes:
 - **portfolio** (``--portfolio``): every requested vintage and band side by side,
   plus a total.
 
-Optional advisor estimates value locked positions (:mod:`estimates`).
+Optional advisor estimates value locked positions (:mod:`estimates`); an optional
+market benchmark file (:mod:`market`) adds a Market Comparison PDF.
 
 The core is stdlib-only; the PDF is produced by an external ``xelatex`` run with
 ``-no-shell-escape`` in a temporary directory. Every string from the CSV, the
@@ -49,6 +50,7 @@ from presidio_angellist.digest.gate import (
     gate_retro,
     load_gate_config,
 )
+from presidio_angellist.digest.market import Market, MarketError, load_market
 from presidio_angellist.digest.metrics import AggregateMetrics, aggregate
 from presidio_angellist.digest.render import (
     DocMeta,
@@ -70,6 +72,8 @@ __all__ = [
     "GateConfig",
     "GateConfigError",
     "GateResult",
+    "Market",
+    "MarketError",
     "Position",
     "Segment",
     "aggregate",
@@ -82,6 +86,7 @@ __all__ = [
     "load_content",
     "load_estimates",
     "load_gate_config",
+    "load_market",
     "load_positions",
     "newest_export",
     "parse_positions",

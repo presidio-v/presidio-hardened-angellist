@@ -31,6 +31,7 @@ from presidio_angellist.digest.config import (
 from presidio_angellist.digest.csvload import in_years, load_positions, newest_export
 from presidio_angellist.digest.estimates import Estimates, load_estimates
 from presidio_angellist.digest.gate import GateConfig, load_gate_config
+from presidio_angellist.digest.market import Market, load_market, market_warnings
 from presidio_angellist.digest.render import (
     DocMeta,
     Segment,
@@ -57,6 +58,10 @@ def output_name(brand: Brand, quarter: str, label: str) -> str:
 
 def portfolio_output_name(brand: Brand, quarter: str) -> str:
     return f"{brand.file_stem}-Portfolio-Digest-{quarter}.pdf"
+
+
+def market_output_name(brand: Brand, quarter: str) -> str:
+    return f"{brand.file_stem}-Market-Comparison-{quarter}.pdf"
 
 
 def portfolio_content_path(content_dir: Path) -> Path:
@@ -90,6 +95,7 @@ class Inputs:
     xelatex: str | None = None
     as_of_override: str | None = None
     estimates: Estimates | None = None
+    market: Market | None = None
 
 
 def build_vintage(inp: Inputs, vintage: int, content_path: Path | None = None) -> Path:
@@ -143,6 +149,40 @@ def build_band(inp: Inputs, band: str, content_path: Path | None = None) -> Path
     return compile_pdf(tex, out, logo=inp.brand.logo, xelatex=inp.xelatex, keep_tex=inp.keep_tex)
 
 
+def requested_segments(inp: Inputs, vintages: list[int], bands: list[str]) -> list[Segment]:
+    """Each requested vintage and band, labelled as requested, with its positions."""
+    segments = [Segment(str(v), in_years(inp.positions, v)) for v in vintages]
+    for b in bands:
+        first, last = parse_band(b)
+        segments.append(Segment(band_label(b), in_years(inp.positions, first, last)))
+    return [s for s in segments if s.positions]
+
+
+def build_market(inp: Inputs, vintages: list[int], bands: list[str]) -> Path:
+    """One Market Comparison PDF for the requested segments (needs ``inp.market``)."""
+    from presidio_angellist.digest.market_render import build_market_tex
+
+    if inp.market is None:
+        raise DigestConfigError("market comparison needs a market file (--market)")
+    segments = requested_segments(inp, vintages, bands)
+    if not segments:
+        raise DigestConfigError("market comparison: no positions in the requested segments")
+    as_of = inp.as_of_override or inp.market.as_of or inp.as_of
+    meta = DocMeta(inp.quarter, as_of, "market", inp.version, inp.state)
+    tex = build_market_tex(
+        segments,
+        inp.positions,
+        inp.gate,
+        inp.market,
+        inp.brand,
+        meta,
+        _logo_ext(inp.brand),
+        estimates=inp.estimates,
+    )
+    out = inp.out_dir / market_output_name(inp.brand, inp.quarter)
+    return compile_pdf(tex, out, logo=inp.brand.logo, xelatex=inp.xelatex, keep_tex=inp.keep_tex)
+
+
 def build_portfolio(
     inp: Inputs,
     vintages: list[int],
@@ -150,11 +190,7 @@ def build_portfolio(
     content_path: Path | None = None,
 ) -> Path:
     """One Portfolio Digest comparing every requested vintage and band, plus a total."""
-    segments = [Segment(str(v), in_years(inp.positions, v)) for v in vintages]
-    for b in bands:
-        first, last = parse_band(b)
-        segments.append(Segment(band_label(b), in_years(inp.positions, first, last)))
-    segments = [s for s in segments if s.positions]
+    segments = requested_segments(inp, vintages, bands)
     if not segments:
         raise DigestConfigError("portfolio digest: no positions in the requested segments")
     content = load_content(content_path or portfolio_content_path(inp.content_dir))
@@ -169,6 +205,7 @@ def build_portfolio(
         meta,
         _logo_ext(inp.brand),
         estimates=inp.estimates,
+        market=inp.market,
     )
     out = inp.out_dir / portfolio_output_name(inp.brand, inp.quarter)
     return compile_pdf(tex, out, logo=inp.brand.logo, xelatex=inp.xelatex, keep_tex=inp.keep_tex)
@@ -211,6 +248,7 @@ class RunConfig:
     xelatex: str | None = None
     locked_estimates: Path | None = None
     portfolio: bool = False
+    market: Path | None = None
 
 
 def _path(raw: Any, base: Path, quarter: str) -> Path:
@@ -272,6 +310,7 @@ def parse_run_config(data: dict[str, Any], base: Path, quarter: str) -> RunConfi
             else None
         ),
         portfolio=_bool(data, "portfolio"),
+        market=_path(data["market"], base, quarter) if data.get("market") else None,
     )
 
 
@@ -305,9 +344,10 @@ def run(
     gate = load_gate_config(cfg.gate_config)
     brand = load_brand(cfg.brand)
     estimates = load_estimates(cfg.locked_estimates)
+    market = load_market(cfg.market)
     as_of = (today or date.today()).isoformat()
     result = RunResult(quarter=quarter, csv=csv)
-    result.warnings = estimate_warnings(estimates, positions)
+    result.warnings = estimate_warnings(estimates, positions) + market_warnings(market, positions)
     inp = Inputs(
         positions=positions,
         gate=gate,
@@ -321,6 +361,7 @@ def run(
         keep_tex=cfg.keep_tex,
         xelatex=cfg.xelatex,
         estimates=estimates,
+        market=market,
     )
     if cfg.refresh if do_refresh is None else do_refresh:
         _refresh_all(cfg, positions, brand, client, result)
@@ -339,6 +380,11 @@ def run(
             result.pdfs.append(build_portfolio(inp, cfg.vintages, cfg.bands))
         except Exception as exc:  # noqa: BLE001
             result.errors.append(f"portfolio: {exc}")
+    if market is not None:
+        try:
+            result.pdfs.append(build_market(inp, cfg.vintages, cfg.bands))
+        except Exception as exc:  # noqa: BLE001
+            result.errors.append(f"market: {exc}")
     if cfg.notify if do_notify is None else do_notify:
         _notify(cfg, result)
     return result

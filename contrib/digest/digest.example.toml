@@ -30,6 +30,10 @@ bands = ["2017-2020", "2021-2025"]
 # Optional advisor estimates for locked positions (see locked-estimates.example.json).
 # locked_estimates = "digests/{quarter}/locked-estimates.json"
 
+# Optional VC market benchmarks (see market.example.json); builds the Market
+# Comparison PDF for the vintages and bands above.
+# market = "digests/{quarter}/market.json"
+
 # Also build one Portfolio Digest comparing every vintage and band above, plus a total.
 # Editorial text: portfolio.json in content_dir.
 portfolio = false

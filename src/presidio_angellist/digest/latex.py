@@ -84,6 +84,14 @@ def safe_url(url: object) -> str | None:
     return s
 
 
+def _tick(v: float) -> str:
+    """Short axis label: 0.04, 0.5, 1, 2.5, 12."""
+    if v >= 10:
+        return f"{v:.0f}"
+    s = f"{v:.2f}" if v < 1 else f"{v:.1f}"
+    return s.rstrip("0").rstrip(".")
+
+
 def tex_url(url: object) -> str | None:
     """Escape a URL for the first argument of ``\\href``; ``None`` if not http(s).
 
@@ -223,17 +231,34 @@ def grouped_columns(
     height_cm: float = 4.0,
     width_cm: float = 16.0,
     fmt: Callable[[float], str] = money,
+    band: Sequence[tuple[float, float] | None] | None = None,
+    line: Sequence[float | None] | None = None,
+    vmax_cap: float | None = None,
 ) -> str:
     """Grouped vertical columns.
 
     ``groups`` = (raw label, [column, ...]) where each column is a stack of
     (value, colour) segments drawn bottom-up. The column total is printed on top.
+    Optional per-group ``band`` (low, high) is shaded behind the columns and ``line``
+    values are joined as a dashed reference line (e.g. a market p25-p75 band and median).
+    ``vmax_cap`` limits the axis; a taller column is cut at the top (marked with a
+    break) and still labelled with its true value.
     """
     totals = [sum(max(v, 0.0) for v, _ in col) for _, cols in groups for col in cols]
-    vmax = max(totals, default=0.0) or 1.0
+    extra = [hi for b in band or () if b for hi in b[1:]] + [v for v in line or () if v]
+    vmax = max(totals + extra, default=0.0) or 1.0
+    if vmax_cap is not None and 0 < vmax_cap < vmax:
+        vmax = vmax_cap
     slot = width_cm / max(len(groups), 1)
     o = [r"\begin{tikzpicture}[font=\scriptsize]"]
     o.append(rf"\draw[dggray!60] (0,0) -- ({width_cm:.2f},0);")
+    for gi, b in enumerate(band or ()):
+        if b and gi < len(groups):
+            lo, hi = (max(v, 0.0) / vmax * height_cm for v in b)
+            o.append(
+                rf"\fill[dgamber!18] ({gi * slot + 0.08:.3f},{lo:.3f}) rectangle "
+                rf"({(gi + 1) * slot - 0.08:.3f},{hi:.3f});"
+            )
     for gi, (lab, cols) in enumerate(groups):
         bw = min(0.6, slot * 0.8 / max(len(cols), 1))
         x0 = gi * slot + (slot - bw * len(cols)) / 2
@@ -242,21 +267,38 @@ def grouped_columns(
             base = 0.0
             for v, colour in col:
                 v = max(v, 0.0)
-                y0, y1 = base / vmax * height_cm, (base + v) / vmax * height_cm
+                y0 = min(base / vmax, 1.0) * height_cm
+                y1 = min((base + v) / vmax, 1.0) * height_cm
                 if y1 - y0 > 0.005:
                     o.append(
                         rf"\fill[{colour}] ({x:.3f},{y0:.3f}) rectangle "
                         rf"({x + bw * 0.9:.3f},{y1:.3f});"
                     )
                 base += v
+            if base > vmax:
+                yb = height_cm - 0.12
+                o.append(
+                    rf"\fill[white] ({x - 0.02:.3f},{yb:.3f}) -- ({x + bw * 0.92:.3f},"
+                    rf"{yb + 0.06:.3f}) -- ({x + bw * 0.92:.3f},{yb + 0.1:.3f}) -- "
+                    rf"({x - 0.02:.3f},{yb + 0.04:.3f}) -- cycle;"
+                )
             o.append(
                 rf"\node[anchor=south,text=dgnavy,font=\tiny] at ({x + bw * 0.45:.3f},"
-                rf"{base / vmax * height_cm:.3f}) {{{fmt(base)}}};"
+                rf"{min(base / vmax, 1.0) * height_cm:.3f}) {{{fmt(base)}}};"
             )
         o.append(
             rf"\node[anchor=north,text=dgnavy] at ({gi * slot + slot / 2:.3f},-0.05) "
             rf"{{{tex(lab)}}};"
         )
+    pts = [
+        (gi * slot + slot / 2, v / vmax * height_cm)
+        for gi, v in enumerate(line or ())
+        if v is not None and gi < len(groups)
+    ]
+    if pts:
+        path = " -- ".join(f"({x:.3f},{y:.3f})" for x, y in pts)
+        o.append(rf"\draw[dgamber,thick,dashed] {path};")
+        o += [rf"\fill[dgamber] ({x:.3f},{y:.3f}) circle (1.6pt);" for x, y in pts]
     lx = 0.0
     for lab, colour in legend:
         o.append(rf"\fill[{colour}] ({lx:.2f},-0.75) rectangle ({lx + 0.25:.2f},-0.55);")
@@ -332,5 +374,71 @@ def stacked_rows(
         )
         o.append(rf"\node[anchor=west,text=dgnavy] at ({lx + 0.3:.2f},{ly:.2f}) {{{tex(lab)}}};")
         lx += step
+    o.append(r"\end{tikzpicture}")
+    return "\n".join(o)
+
+
+def diverging_hbar(
+    rows: Sequence[tuple[str, float]],
+    half_width_cm: float = 4.0,
+    *,
+    fmt: Callable[[float], str] | None = None,
+    bar_h: float = 0.34,
+    gap: float = 0.14,
+) -> str:
+    """Bars left (negative, red) or right (positive, green) of a zero line."""
+    fmt = fmt or (lambda v: f"{v * 100:+.0f} pp")
+    vmax = max([abs(v) for _, v in rows] + [1e-9])
+    h = max(len(rows), 1) * (bar_h + gap)
+    x0 = half_width_cm + 3.0
+    o = [r"\begin{tikzpicture}[font=\scriptsize]"]
+    for i, (lab, v) in enumerate(rows):
+        y = h - (i + 1) * (bar_h + gap) + gap / 2
+        w = v / vmax * half_width_cm
+        col = "dgaccent" if v >= 0 else "dgred"
+        o.append(rf"\node[anchor=east,text=dgnavy] at (0,{y + bar_h / 2:.3f}) {{{tex(lab)}}};")
+        o.append(rf"\fill[{col}] ({x0:.3f},{y:.3f}) rectangle ({x0 + w:.3f},{y + bar_h:.3f});")
+        anchor = "west" if v >= 0 else "east"
+        o.append(
+            rf"\node[anchor={anchor},text=dgnavy,font=\tiny] at "
+            rf"({x0 + w + (0.05 if v >= 0 else -0.05):.3f},{y + bar_h / 2:.3f}) {{{fmt(v)}}};"
+        )
+    o.append(rf"\draw[dggray] ({x0:.3f},-0.05) -- ({x0:.3f},{h + 0.05:.3f});")
+    o.append(r"\end{tikzpicture}")
+    return "\n".join(o)
+
+
+def strip_chart(
+    groups: Sequence[tuple[str, Sequence[tuple[float, str]]]],
+    width_cm: float = 9.0,
+    *,
+    vmin: float = 0.1,
+    vmax: float = 10.0,
+    ref: float = 1.0,
+    row_h: float = 0.5,
+) -> str:
+    """Dots per row on a log axis, with a reference line (e.g. 1.0x the market median)."""
+    span = math.log10(vmax) - math.log10(vmin)
+
+    def xpos(v: float) -> float:
+        v = min(max(v, vmin), vmax)
+        return (math.log10(v) - math.log10(vmin)) / span * width_cm
+
+    h = max(len(groups), 1) * row_h
+    o = [r"\begin{tikzpicture}[font=\scriptsize]"]
+    for i, (lab, pts) in enumerate(groups):
+        y = h - (i + 0.5) * row_h
+        o.append(rf"\node[anchor=east,text=dgnavy] at (-0.1,{y:.3f}) {{{tex(lab)}}};")
+        o.append(rf"\draw[dglight] (0,{y:.3f}) -- ({width_cm:.3f},{y:.3f});")
+        for j, (v, col) in enumerate(pts):
+            jitter = ((j % 3) - 1) * 0.08
+            o.append(rf"\fill[{col},opacity=0.8] ({xpos(v):.3f},{y + jitter:.3f}) circle (2.4pt);")
+    for tick in (vmin, ref, vmax):
+        o.append(
+            rf"\node[anchor=north,text=dggray,font=\tiny] at ({xpos(tick):.3f},0) "
+            rf"{{{_tick(tick)}x}};"
+        )
+    o.append(rf"\draw[dgred,thick,dashed] ({xpos(ref):.3f},0) -- ({xpos(ref):.3f},{h:.3f});")
+    o.append(rf"\draw[dggray!60] (0,0) -- ({width_cm:.3f},0);")
     o.append(r"\end{tikzpicture}")
     return "\n".join(o)

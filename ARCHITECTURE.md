@@ -45,6 +45,7 @@ Listed in dependency order — primitives first, orchestration last.
 | `digest/gate.py` | Strict gate-config validation and the retro-check (stage, sector, cap, top-lead substitute, per-lead annual limit in date order). |
 | `digest/metrics.py` | Deterministic aggregate metrics: TVPI (locked at cost / marked only), DPI, multiple buckets, per-lead / per-bucket / per-verdict groups. |
 | `digest/estimates.py` | Strict validation of the optional locked-value estimates file; gross and net-of-carry estimated values for locked positions only. |
+| `digest/market.py`, `digest/market_render.py` | Strict validation of the optional market benchmark file, period matching by overlapping years, stage normalisation and entry-price ratios; the Market Comparison document with per-chart source citations. |
 | `digest/latex.py`, `digest/render.py` | LaTeX escaping and URL sanitising; TikZ charts; vintage, aggregate and portfolio document assembly. Every external string passes through `tex()` / `tex_url()`. |
 | `digest/build.py` | Pre-flight primitive scan, then `xelatex -no-shell-escape` in a temporary directory with `openout_any=p`, a minimal environment and a timeout. |
 | `digest/refresh.py` | Optional advisor refresh via the Anthropic Messages API + web search, with allowlisted, scrubbed and re-checked payloads; writes drafts only. |

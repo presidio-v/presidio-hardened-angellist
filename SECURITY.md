@@ -183,6 +183,9 @@ sensitive than inbound deal mail. Its controls:
   (events, method, segment verdicts, source labels) is escaped like all other content,
   source links are limited to `http(s)`, and the estimates file is validated strictly.
   Estimates are never sent to a model; the advisor refresh payload is unchanged.
+- **Market benchmarks** are a private runtime input like the rest. All their text is
+  escaped, source links must be `http(s)`, and the file is validated strictly. It is
+  never sent to a model or any other service.
 - **No private data in the repository.** Brand, gate parameters, editorial content and
   the export are runtime inputs; the repository ships only neutral examples
   (`contrib/digest/`) and synthetic fixtures.
