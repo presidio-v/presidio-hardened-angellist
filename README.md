@@ -357,6 +357,72 @@ message is triaged **exactly once** across daily runs. Send failures are loud
 
 ---
 
+## Quarterly portfolio digest (`angeltriage digest`)
+
+New in 0.8.0. Turns the AngelList **investments export** (Portfolio → Download CSV) into
+branded, confidential PDF digests, built locally with `xelatex`:
+
+- **Vintage digest** (`--vintage 2026`): one investment year. KPI tiles, summary, thesis
+  and gate, capital by thesis bucket, entry caps against the norm and ceiling (log
+  scale), capital by syndicate lead against the per-lead limit, an outlook chart, a
+  per-position gate retro-check, and one card per company.
+- **Aggregate digest** (`--band 2017-2020`): a band of years. KPI tiles (positions,
+  invested, realized, unrealized, TVPI with locked positions at cost and marked-only,
+  DPI, share of 0x positions, top-1 / top-3 share of value), invested vs value by year,
+  the multiple distribution (0x, 0–1x, 1–3x, 3–10x, >10x), top positions by net value,
+  per-lead and per-thesis-bucket tables, and an aggregated gate retro-check that answers
+  *would the gate have helped?* (pass / borderline / fail counts and the TVPI of each
+  group), followed by holding cards, summary, lessons and actions.
+
+Everything investor-specific is supplied at runtime from private files that never live
+in this repository:
+
+| Input | Example (neutral) | Purpose |
+|---|---|---|
+| Investments export | — | Tickets, marks, caps, leads. The first disclaimer line, `Locked` values and empty caps are handled. |
+| Gate config (JSON) | [`contrib/digest/gate-config.example.json`](contrib/digest/gate-config.example.json) | Stage, sector, cap norm/ceiling, per-lead annual limit, top leads, sector mapping. Validated strictly; a missing field is an error. |
+| Brand (TOML/JSON) | [`contrib/digest/brand.example.toml`](contrib/digest/brand.example.toml) | Name, tagline, logo, colours, font (with fallback), classification label (default `TLP:AMBER`), document-id prefix, header text. |
+| Editorial content (JSON) | `tests/fixtures/digest/*.json` | `vintage-<year>.json` (or `content.json`) and `agg-<first>-<last>.json`: headline, thesis, summary, per-company status/signals/forecast/risk/sources. |
+| Run config (TOML/JSON) | [`contrib/digest/digest.example.toml`](contrib/digest/digest.example.toml) | For scheduled runs: paths, vintages, bands, refresh and notify switches. |
+
+```bash
+# One vintage and one band, from the newest export in a directory
+angeltriage digest build \
+  --csv-dir ~/private/angellist/data \
+  --gate-config ~/private/angellist/gate-config.json \
+  --brand ~/private/angellist/brand.toml \
+  --content-dir ~/private/angellist/digests/2026-Q4 \
+  --out-dir ~/private/angellist/digests/2026-Q4 \
+  --vintage 2026 --band 2017-2020
+
+# Optional: draft editorial content with Claude + web search ([llm] extra, ANTHROPIC_API_KEY).
+# Writes <content>.draft.json next to the approved file; review, then promote by hand.
+angeltriage digest refresh --csv-dir … --content-dir … --vintage 2026 --redact "Your Name"
+
+# Scheduled: everything from one private config (current quarter, newest export)
+angeltriage digest run --config ~/private/angellist/digest.toml --dry-run
+angeltriage digest run --config ~/private/angellist/digest.toml
+```
+
+A weekly Saturday-morning launchd template is in
+[`contrib/launchd/com.example.angeltriage-digest.plist`](contrib/launchd/com.example.angeltriage-digest.plist).
+`xelatex` comes from TeX Live / MacTeX; set `ANGELTRIAGE_XELATEX` (or `xelatex` in the
+run config) if it is not on `PATH`. The refresh model defaults to `claude-fable-5-2`
+and can be changed with `--model`, `refresh_options.model`, or `ANGELTRIAGE_DIGEST_MODEL`.
+
+**Security.** Every string from the CSV, the content JSON (which a model may have
+drafted), the gate config and the brand config is LaTeX-escaped; link targets are
+restricted to `http(s)` and percent-encoded. A pre-flight scan refuses to compile a
+document containing a file-, shell- or catcode-level TeX primitive, and `xelatex` runs
+with `-no-shell-escape`, `openout_any=p` and a timeout in a throwaway directory. The
+refresh sends a model **only** the company name, its sector and stage labels, and prior
+editorial text with every amount, multiple, lead, fund vehicle and investor name
+removed; the request is re-checked against the export before it is sent. PDFs are
+written owner-only (`0600`) and are confidential: keep them local. See
+[SECURITY.md](SECURITY.md#portfolio-digest).
+
+---
+
 ## Deal queue (persistence)
 
 `--save` persists triaged deals to a local SQLite store so triage becomes a
@@ -422,9 +488,8 @@ explicitly opted in. See [SECURITY.md](SECURITY.md) for the full trust-boundary 
 - **Now / in flight** — OpenSSF hardening: governance and assurance documentation, Scorecard
   workflow, Bandit SAST, SBOM generation, an Atheris fuzz harness over the intake path, and
   the OpenSSF Best Practices badge (passing, then silver).
-- **Next** — `0.8.0`: pluggable enrichment providers (Crunchbase / Harmonic) behind a stable
-  interface, and queue export / digest output. First signed release tag and GitHub Release
-  carrying the SBOM and build-provenance attestation.
+- **Next** — `0.9.0`: pluggable enrichment providers (Crunchbase / Harmonic) behind a stable
+  interface, and deal-queue export.
 - **Later, under evaluation** — a migration mechanism for the SQLite deal store (needed
   before the schema changes; see [SEMVER.md](SEMVER.md#schemawire-stability)), broader
   founder/traction signal extraction, and an independent third-party security review.
@@ -441,7 +506,8 @@ explicitly opted in. See [SECURITY.md](SECURITY.md) for the full trust-boundary 
 | **0.5.2** | Better company/one-liner extraction (body cues); growth-stage out-of-scope detection |
 | **0.6.0** | Security-hardening release: SSRF guard, sink-enforced log redaction, LLM prompt-injection defense, restored retry/backoff, plaintext-IMAP refusal, CVE-floored deps + `pip-audit` in CI |
 | **0.7.0** | Local/self-hosted LLM backend (OpenAI-compatible), SMTP deal notifications (`--notify`), exactly-once polling (`processed_messages`) |
-| **0.8.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
+| **0.7.3** | Security release: SSRF guard on every redirect hop, bounded enrichment reads, owner-only deal store |
+| **0.8.0** | Quarterly portfolio digest (`angeltriage digest`): vintage and aggregate PDFs, gate retro-check, optional advisor refresh with payload minimisation, scheduled runs |
 
 ---
 
@@ -473,7 +539,10 @@ presidio-hardened-angellist/
 │   ├── config.py            # --weights / --rubric config loaders
 │   ├── llm.py               # optional Claude extraction/memo (key-gated)
 │   ├── pipeline.py          # end-to-end triage_email()
+│   ├── digest/              # quarterly portfolio digest (CSV -> gate retro -> LaTeX -> PDF)
 │   └── cli.py               # angeltriage entrypoint
+├── contrib/digest/          # neutral example gate / brand / run configs
+├── contrib/launchd/         # weekly digest launchd template
 ├── tests/
 ├── pyproject.toml
 ├── LICENSE                  # MIT

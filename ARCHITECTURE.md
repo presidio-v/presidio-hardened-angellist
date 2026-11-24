@@ -40,7 +40,14 @@ Listed in dependency order — primitives first, orchestration last.
 | `notify.py` | Optional SMTP notification of new triage results over implicit TLS or STARTTLS, with credentials from the environment only. |
 | `pipeline.py` | Composes intake → (LLM fallback) → enrichment → scoring → memo into `triage_email` / `triage_csv` / `triage_deal` / `triage_imap`. |
 | `watch.py` | The `--watch` polling loop over IMAP, with per-message dedup against the store. |
-| `cli.py` | Argument parsing, output rendering (human and `--json`), and exit codes. |
+| `cli.py` | Argument parsing, output rendering (human and `--json`), and exit codes. `angeltriage digest …` is dispatched to `digest/cli.py`. |
+| `digest/csvload.py` | Parses the AngelList investments export into `Position` records (disclaimer line, `Locked`, empty caps, currency symbols). |
+| `digest/gate.py` | Strict gate-config validation and the retro-check (stage, sector, cap, top-lead substitute, per-lead annual limit in date order). |
+| `digest/metrics.py` | Deterministic aggregate metrics: TVPI (locked at cost / marked only), DPI, multiple buckets, per-lead / per-bucket / per-verdict groups. |
+| `digest/latex.py`, `digest/render.py` | LaTeX escaping and URL sanitising; TikZ charts; vintage and aggregate document assembly. Every external string passes through `tex()` / `tex_url()`. |
+| `digest/build.py` | Pre-flight primitive scan, then `xelatex -no-shell-escape` in a temporary directory with `openout_any=p`, a minimal environment and a timeout. |
+| `digest/refresh.py` | Optional advisor refresh via the Anthropic Messages API + web search, with allowlisted, scrubbed and re-checked payloads; writes drafts only. |
+| `digest/runner.py`, `digest/cli.py` | Run config, quarter detection, newest-export selection, scheduled `digest run`, optional notice via `notify.send_plain`. |
 
 ## Data / processing flow
 
@@ -91,4 +98,6 @@ contract, not an implementation detail.
 | **Mail server → IMAP intake** | Credential + input | `IMAP_HOST` / `IMAP_USER` / `IMAP_PASSWORD` are read from the environment only, never the command line, and are never logged. The mailbox is opened read-only. IMAP-over-TLS is the default; plaintext is refused unless `IMAP_ALLOW_INSECURE=1` is set explicitly, which also warns. |
 | **Triage result → SMTP recipients** | Egress | `ANGELTRIAGE_SMTP_*` credentials come from the environment only; the connection uses implicit TLS (465) or STARTTLS. Deal text — which is attacker-influenced — is delivered to the configured recipients, so that list must be trusted. |
 | **Process → local deal store** | Persistence | SQLite at `~/.angeltriage/deals.db` (overridable via `--db` / `ANGELTRIAGE_DB`). All statements are parameterized. The store holds deal data at rest and no secrets or API keys, and never leaves the machine; protect it with filesystem permissions if the deal data is sensitive. |
+| **Investments export / content JSON → LaTeX → `xelatex`** | Input validation + local execution | All external strings escaped; link targets limited to `http(s)` and percent-encoded; pre-flight scan refuses file/shell/catcode primitives; `-no-shell-escape`, `openout_any=p`, temporary job directory, timeout. PDFs written `0600`. |
+| **Portfolio → LLM provider (digest refresh)** | Egress (opt-in) | Payload allowlist (company name, sector and stage labels, scrubbed prior text); amounts, multiples, leads, fund vehicles and investor identity removed and the request re-checked against the export before sending. Model output is untrusted text, schema-coerced and escaped. |
 | **Process → log sinks** | Egress | A `RedactingFilter` is attached to the `presidio_angellist` logger at import time, so bearer tokens, `access_token=` / `api_key=` parameters, `Authorization:` headers, and `sk_live_*` / `sk-ant-*` keys are scrubbed at the sink for every record — not only at call sites that redact by hand. |

@@ -13,6 +13,59 @@ Entries before `v0.6.0` are reconstructed from the git history and release tags;
 
 Nothing yet.
 
+## [0.8.0] — Unreleased
+
+Minor release: a new, additive `angeltriage digest` command family and the
+`presidio_angellist.digest` subpackage. Nothing in the triage path changes.
+
+### Added
+
+- **Quarterly portfolio digest** (`presidio_angellist.digest`, `angeltriage digest build`).
+  Reads the AngelList investments export (tolerates the disclaimer line, `Locked`
+  values, empty caps, non-USD caps) and builds branded PDFs with an external `xelatex`:
+  a *vintage* digest (one year, per-company cards, entry-cap and per-lead charts,
+  outlook chart, gate retro-check) and an *aggregate* digest (a band of years: TVPI with
+  locked positions at cost and marked-only, DPI, 0x share, concentration, invested vs
+  value by year, multiple distribution, top positions, per-lead and per-thesis-bucket
+  tables, and an aggregated gate retro-check — "would the gate have helped?").
+- **Gate retro-check** driven by an operator gate-config JSON (stage and round size,
+  sector bucket, post-money cap with pre-money counted as pre + round, top-lead
+  substitute, per-lead limit per calendar year in date order). The config is validated
+  strictly and fails closed (`GateConfigError`).
+- **Brand config** (TOML/JSON): name, tagline, logo, colours, font with fallback,
+  classification label (default `TLP:AMBER`), document-id prefix, header text.
+- **Advisor refresh** (`angeltriage digest refresh`, `[llm]` extra): drafts per-company
+  editorial content with the Anthropic Messages API and the server-side web search tool
+  (default model `claude-fable-5-2`, configurable; server-side refusal fallback enabled
+  where supported). Output goes to `<content>.draft.json`; approved content is never
+  written.
+- **Scheduled run** (`angeltriage digest run --config digest.toml`): newest export,
+  current quarter, optional refresh, one PDF per vintage and band, optional email notice
+  via `notify.send_plain` (file names only unless `attach_pdf = true`). Neutral examples
+  in `contrib/digest/` and a weekly launchd template in `contrib/launchd/`.
+- Environment variables `ANGELTRIAGE_XELATEX` and `ANGELTRIAGE_DIGEST_MODEL`.
+
+### Security
+
+- All CSV, content, gate-config and brand text is LaTeX-escaped (including `\ { } $ & #
+  ^ _ ~ % [ ] < > |` and control characters); `\href` targets are restricted to
+  `http(s)` and percent-encoded. A pre-flight scan refuses to compile any document
+  containing a file-, shell- or catcode-level primitive (`\input`, `\write`, `\openin`,
+  `\catcode`, `\csname`, `^^`, …). `xelatex` runs with `-no-shell-escape`,
+  `shell_escape=f`, `openout_any=p`, `openin_any=p`, a minimal environment and a
+  timeout, in a throwaway directory. Injection tests cover company names such as
+  `\input{/etc/passwd}` and `\write18{…}`.
+- **Payload minimisation** for the refresh: a request carries only the company name,
+  sector and stage labels, and prior editorial text scrubbed of amounts, multiples,
+  leads, fund vehicles and the investing entity; it is re-checked against every amount
+  and name in the export before it is sent, and a hit skips that company.
+- Digest PDFs, `.tex` sources and drafts are written owner-only (`0600`).
+
+### Changed
+
+- `contrib/` added. CONTRIBUTING no longer says the package invokes no subprocesses:
+  the digest runs `xelatex`.
+
 ## [0.7.3] — 2026-07-30
 
 **Security release.** Fixes a redirect-based SSRF bypass found by an independent

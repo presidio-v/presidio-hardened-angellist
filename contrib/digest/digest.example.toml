@@ -1,0 +1,57 @@
+# digest.example.toml - config for `angeltriage digest run --config <this file>`.
+#
+# Copy it OUTSIDE the repository (your real paths, brand and gate parameters are
+# private) and edit. Relative paths resolve against the directory of this file.
+# "{quarter}" in a path is replaced by the current quarter, e.g. 2026-Q4.
+
+# Directory holding AngelList investment exports; the newest
+# *_angellist_investments_*.csv (by file name) is used. Or pin one file with `csv`.
+csv_dir = "data"
+# csv = "data/example_angellist_investments_2026_11_01.csv"
+
+# LP decision-gate parameters (see gate-config.example.json for the schema).
+gate_config = "decisions/gate-config.json"
+
+# Brand: name, tagline, logo, colours, classification label (see brand.example.toml).
+brand = "brand/brand.toml"
+
+# Editorial content per quarter:
+#   vintage-<year>.json (or a single content.json) for vintage digests,
+#   agg-<first>-<last>.json for band digests.
+content_dir = "digests/{quarter}"
+
+# Where PDFs are written. They are confidential: keep this directory local.
+out_dir = "digests/{quarter}"
+
+# One PDF per vintage year, and one per band of years.
+vintages = [2026]
+bands = ["2017-2020", "2021-2025"]
+
+# Footer document id: <prefix>-<quarter> · <label> · v<version> · <state> <date>
+version = "1.0"
+state = "draft"
+
+# Also write the .tex source next to each PDF (for debugging the layout).
+keep_tex = false
+
+# Path to xelatex if it is not on PATH (MacTeX: /Library/TeX/texbin/xelatex).
+# xelatex = "/Library/TeX/texbin/xelatex"
+
+# Advisor refresh with Claude + web search (needs the [llm] extra and an
+# ANTHROPIC_API_KEY in the environment). Billed per call, so it is off by default.
+# It only ever writes <content>.draft.json files; approved content is never touched.
+refresh = false
+
+[refresh_options]
+# model = "claude-fable-5-2"     # default: the most capable current model
+max_searches = 5                 # web searches per company
+# Names that must never be sent to the model, in addition to the leads, fund
+# vehicles and investing entity found in the export (e.g. your own name).
+redact_terms = []
+
+# Notification by email when a run finishes (SMTP settings come from the
+# ANGELTRIAGE_SMTP_* / ANGELTRIAGE_NOTIFY_TO environment variables). Off by default.
+notify = false
+# The notice lists file names only. Attaching the confidential PDFs requires this
+# explicit opt-in.
+attach_pdf = false

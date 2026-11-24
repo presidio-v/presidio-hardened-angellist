@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  launchd agent: weekly portfolio digest, Saturday 08:00 local time.
+
+  Install (replace every __PLACEHOLDER__ first; keep the real file out of git):
+    cp com.example.angeltriage-digest.plist ~/Library/LaunchAgents/
+    launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.example.angeltriage-digest.plist
+    launchctl kickstart gui/$(id -u)/com.example.angeltriage-digest   # run once now
+  Remove:
+    launchctl bootout gui/$(id -u)/com.example.angeltriage-digest
+
+  Secrets do not belong in this file. If refresh or notify is on, point
+  ProgramArguments at a small wrapper script that loads ANTHROPIC_API_KEY /
+  ANGELTRIAGE_SMTP_* from the macOS Keychain (security find-generic-password -w)
+  and then execs angeltriage.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.example.angeltriage-digest</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>__ANGELTRIAGE_BIN__</string>
+    <string>digest</string>
+    <string>run</string>
+    <string>--config</string>
+    <string>__DIGEST_CONFIG__</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/Library/TeX/texbin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Weekday</key>
+    <integer>6</integer>
+    <key>Hour</key>
+    <integer>8</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+
+  <key>WorkingDirectory</key>
+  <string>__WORKING_DIR__</string>
+  <key>StandardOutPath</key>
+  <string>__LOG_DIR__/angeltriage-digest.log</string>
+  <key>StandardErrorPath</key>
+  <string>__LOG_DIR__/angeltriage-digest.err</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+  <key>Umask</key>
+  <integer>63</integer>
+</dict>
+</plist>
