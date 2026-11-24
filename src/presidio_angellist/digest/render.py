@@ -9,6 +9,7 @@ digits and fixed markup only). Literal LaTeX in this file is the only markup.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
@@ -355,6 +356,106 @@ def capital_by_bucket(cfg: GateConfig, positions: list[Position], gate: list[Gat
     return r"\dsub{Capital by thesis bucket}" + "\n" + stacked_bar(parts) + r"\par\vspace{6pt}"
 
 
+GLOSSARY_MARKER = "%% digest-glossary %%"
+
+# Venture terms the digests use. Only terms that actually occur in a document are listed
+# in its glossary; company names, sectors and labels are never glossary entries.
+GLOSSARY: tuple[tuple[str, str, str], ...] = (
+    (
+        "TVPI",
+        r"\bTVPI\b",
+        "Total value to paid-in: (cash returned + remaining value) / capital "
+        "invested. Shown marked-only, with locked positions at cost, and with locked estimates.",
+    ),
+    ("DPI", r"\bDPI\b", "Distributions to paid-in: cash actually returned / capital invested."),
+    ("LP", r"\bLPs?\b", "Limited partner: an investor in a fund or SPV who does not manage it."),
+    ("GP", r"\bGPs?\b", "General partner: the manager of a fund or syndicate."),
+    (
+        "SPV",
+        r"\bSPVs?\b",
+        "Special purpose vehicle: a single-deal fund through which a syndicate invests.",
+    ),
+    (
+        "SAFE",
+        r"\bSAFEs?\b",
+        "Simple agreement for future equity: converts into shares at the "
+        "next priced round, at the cap or discount.",
+    ),
+    (
+        "Cap",
+        r"\b[Cc]aps?\b",
+        "Valuation cap: the maximum valuation at which a SAFE or note converts.",
+    ),
+    (
+        "Pre-money / post-money",
+        r"\b(?:[Pp]re|[Pp]ost)(?:-money)?\b",
+        "Company valuation before / after the new money of a round. "
+        "A pre-money cap is compared as cap + round size.",
+    ),
+    (
+        "Carry",
+        r"\b[Cc]arry\b",
+        "Carried interest: the lead's share of the gain (typically 20%), "
+        "deducted from net values.",
+    ),
+    ("Mark", r"\b[Mm]ark(?:ed|s)?\b", "The value the platform currently assigns to a position."),
+    (
+        "Locked",
+        r"\b[Ll]ocked\b",
+        "A position the platform has not yet marked; shown at cost unless an estimate is given.",
+    ),
+    ("0x", r"\b0x\b", "A position marked at zero (written off)."),
+    (
+        "P(up-round)",
+        r"P\(up-round\)",
+        "Advisor's judgement of the chance of a priced round "
+        "above our entry cap within 12-24 months.",
+    ),
+    (
+        "Pro-rata",
+        r"\b[Pp]ro[- ]rata\b",
+        "The right to invest in later rounds to keep the same ownership share.",
+    ),
+)
+
+
+def _plain(doc: str) -> str:
+    """Rough plain text of a LaTeX body, for deciding which glossary terms occur."""
+    body = doc.split(r"\begin{document}", 1)[-1]
+    body = re.sub(r"\\[A-Za-z@]+\*?(?:\[[^\]]*\])?", " ", body)
+    return body.replace("{", " ").replace("}", " ")
+
+
+def glossary_block(doc: str) -> str:
+    text = _plain(doc.split(GLOSSARY_MARKER, 1)[0])
+    picked: set[str] = set()
+    while True:  # a definition may use another term (LP -> SPV): include that too
+        new = {t for t, pat, _ in GLOSSARY if t not in picked and re.search(pat, text)}
+        if not new:
+            break
+        picked |= new
+        text += " " + " ".join(d for t, _, d in GLOSSARY if t in new)
+    rows = [(t, d) for t, _, d in GLOSSARY if t in picked]
+    if not rows:
+        return ""
+    items = "".join(r"\item[\textbf{" + tex(t) + r"}] " + tex(d) for t, d in rows)
+    return (
+        r"\Needspace{0.2\textheight}\dsec{Glossary}"
+        + "\n"
+        + r"{\scriptsize\color{dgnavy}\begin{description}[leftmargin=2.6cm,style=nextline,"
+        + r"itemsep=1pt,topsep=2pt,parsep=0pt,font=\normalfont]"
+        + items
+        + r"\end{description}}\par"
+    )
+
+
+def with_glossary(doc: str) -> str:
+    """Replace the glossary marker with the terms that occur in the document."""
+    if GLOSSARY_MARKER not in doc:
+        return doc
+    return doc.replace(GLOSSARY_MARKER, glossary_block(doc), 1)
+
+
 def method_block(brand: Brand, as_of: str, extra: str = "") -> str:
     text = (
         f"Positions, tickets, caps, leads and marks: AngelList investment export of {as_of}. "
@@ -366,7 +467,9 @@ def method_block(brand: Brand, as_of: str, extra: str = "") -> str:
         "advice; for the investor's own use."
     )
     return (
-        r"\dsec{Method}"
+        GLOSSARY_MARKER
+        + "\n"
+        + r"\dsec{Method}"
         + "\n"
         + r"{\scriptsize\color{dgnavy}"
         + tex(text)
@@ -746,7 +849,7 @@ def build_vintage_tex(
         )
     )
     o.append(r"\end{document}")
-    return "\n".join(x for x in o if x)
+    return with_glossary("\n".join(x for x in o if x))
 
 
 def gate_matrix(positions: list[Position], gate: list[GateResult], cfg: GateConfig) -> str:
@@ -1081,7 +1184,7 @@ def build_aggregate_tex(
         )
     )
     o.append(r"\end{document}")
-    return "\n".join(x for x in o if x)
+    return with_glossary("\n".join(x for x in o if x))
 
 
 # ---------------------------------------------------------------------------
@@ -1387,4 +1490,4 @@ def build_portfolio_tex(
         )
     )
     o.append(r"\end{document}")
-    return "\n".join(x for x in o if x)
+    return with_glossary("\n".join(x for x in o if x))

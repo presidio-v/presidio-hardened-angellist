@@ -86,6 +86,9 @@ Minor release: a new, additive `angeltriage digest` command family and the
 
 ### Changed
 
+- Every digest ends with a **Glossary** of the venture terms it actually uses (TVPI, DPI,
+  LP, SPV, SAFE, cap, pre/post-money, carry, mark, locked, 0x, P(up-round), pro-rata),
+  including terms used inside other definitions. Company names and sectors are never listed.
 - Digest tables break across pages (`xltabular`) with a repeated header, so long tables no
   longer strand their section heading at the foot of a page.
 - A locked position that has already paid out cash keeps that cash in the "locked at cost"

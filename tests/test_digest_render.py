@@ -461,3 +461,34 @@ def test_tex_drops_pictographs_without_double_gap():
 
     assert tex("Alpha \U0001f64f Beta") == "Alpha Beta"
     assert tex("Rocket❤️") == "Rocket"
+
+
+def test_glossary_lists_only_terms_used():
+    from presidio_angellist.digest.render import GLOSSARY_MARKER, with_glossary
+
+    doc = (
+        r"\begin{document}TVPI 1.2x and DPI 0.3x through an SPV. "
+        + GLOSSARY_MARKER
+        + r"\dsec{Method} Pro-rata appears only after the marker.\end{document}"
+    )
+    out = with_glossary(doc)
+    assert r"\dsec{Glossary}" in out
+    for term in ("TVPI", "DPI", "SPV"):
+        assert r"\textbf{" + term + "}" in out
+    assert "SAFE" not in out.split(r"\dsec{Method}")[0]
+    assert "Pro-rata" not in out.split(r"\dsec{Method}")[0]
+    assert GLOSSARY_MARKER not in out
+
+
+def test_glossary_omitted_when_no_terms():
+    from presidio_angellist.digest.render import GLOSSARY_MARKER, with_glossary
+
+    out = with_glossary(r"\begin{document}Hello " + GLOSSARY_MARKER + r"\end{document}")
+    assert "Glossary" not in out and GLOSSARY_MARKER not in out
+
+
+def test_glossary_includes_terms_used_in_definitions():
+    from presidio_angellist.digest.render import GLOSSARY_MARKER, with_glossary
+
+    out = with_glossary(r"\begin{document}Each LP " + GLOSSARY_MARKER + r"\end{document}")
+    assert r"\textbf{SPV}" in out  # the LP definition mentions an SPV
