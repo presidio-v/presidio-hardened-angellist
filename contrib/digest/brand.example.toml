@@ -1,0 +1,31 @@
+# Brand config for `angeltriage digest`. Keep your real brand file outside the
+# repository; every text field is LaTeX-escaped before it reaches the PDF.
+
+name = "Example Ventures"
+tagline = "Small tickets, written gate."
+# Logo: PNG, JPG or PDF. A relative path resolves against this file's directory.
+# logo = "logo.png"
+
+# Classification banner in the footer, and the note printed under "Method".
+classification = "TLP:AMBER"
+classification_note = "TLP:AMBER: limited disclosure; recipients may share only within their organisation on a need-to-know basis."
+
+doc_id_prefix = "EX-DIGEST"        # footer document id: <prefix>-<quarter> · <label> · v<version> · <state> <date>
+header_text = "Quarterly Digest"   # right-hand page header and title kicker
+file_prefix = "Example-Ventures"   # PDF file names: <file_prefix>-Digest-<quarter>-...
+
+# Main font (a system or TeX font name); the fallback is used when it is missing.
+font = "Helvetica Neue"
+fallback_font = "TeX Gyre Heros"
+
+[colors]  # 6-digit hex; invalid values fall back to the defaults
+navy = "1E293B"
+accent = "0F766E"
+light = "E2E8F0"
+gray = "94A3B8"
+blue = "2563EB"
+red = "B91C1C"
+amber = "B45309"
+pale = "F1F5F9"
+class_bg = "000000"
+class_fg = "FFC000"

@@ -11,6 +11,7 @@ Examples
     angeltriage deal.eml --save          # persist to the deal queue
     angeltriage --queue                  # show the ranked deal queue
     angeltriage --set-status 4 passed    # update a deal's workflow status
+    angeltriage digest build ...         # quarterly portfolio digest (see digest/cli.py)
 
 The deterministic path needs no API key. ``--memo`` and the extraction fallback
 use Claude when ANTHROPIC_API_KEY is set (and the ``[llm]`` extra is installed).
@@ -129,6 +130,12 @@ def _read_stdin() -> tuple[str, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    raw = sys.argv[1:] if argv is None else argv
+    if raw and raw[0] == "digest":
+        from presidio_angellist.digest.cli import main as digest_main
+
+        logging.basicConfig(level=logging.WARNING, format="%(levelname)s %(name)s: %(message)s")
+        return digest_main(raw[1:])
     args = _build_parser().parse_args(argv)
 
     logging.basicConfig(

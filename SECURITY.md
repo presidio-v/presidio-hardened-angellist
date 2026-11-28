@@ -4,7 +4,8 @@
 
 | Version | Supported |
 | ------- | --------- |
-| 0.7.3   | ✅ Yes (latest) |
+| 0.8.x   | ✅ Yes (latest) |
+| 0.7.3   | ✅ Yes |
 | 0.7.0 – 0.7.2 | ⚠️ Upgrade to 0.7.3 — affected by the redirect-SSRF defect fixed in 0.7.3 (see below) |
 | 0.6.x   | ⚠️ Upgrade to 0.7.3 — same redirect-SSRF defect |
 | 0.5.x   | ⚠️ Superseded — upgrade to 0.7.x (SSRF + CVE fixes) |
@@ -139,6 +140,55 @@ boundaries:
   `IMAP_ALLOW_INSECURE=1`, which also emits a loud warning. `--watch` (continuous
   polling) keeps those env-sourced credentials in the long-running process's memory
   for its lifetime — run it on a host you control.
+
+### Portfolio digest
+
+`angeltriage digest` (0.8.0+) handles the investor's own portfolio, which is more
+sensitive than inbound deal mail. Its controls:
+
+- **LaTeX injection.** Company names and leads (from the CSV), editorial text (from
+  content JSON, possibly LLM-drafted), gate labels and brand text are all untrusted.
+  Each is escaped before it reaches the document: `\ { } $ & # ^ _ ~ % [ ] < > | "`
+  are replaced by their text equivalents and control/format characters are dropped.
+  Link targets must be `http`/`https`, are percent-encoded, and keep only `\%`, `\#`,
+  `\&` as escapes, so `javascript:`, `file:` and `run:` links never appear. Brand fonts
+  must match `[A-Za-z0-9 .-]` and colours must be 6-digit hex.
+- **Fail-closed pre-flight.** Before TeX runs, the document body is scanned for
+  primitives the templates never emit (`\input`, `\include`, `\write`, `\openin`,
+  `\openout`, `\immediate`, `\catcode`, `\csname`, `\def`, `\let`, `\directlua`,
+  `^^`, …). A hit aborts the build: if one appears, escaping was bypassed.
+- **No shell escape.** `xelatex` runs with `-no-shell-escape` (and `shell_escape=f`), so
+  `\write18` can never execute a command regardless of the local `texmf.cnf`.
+  `openout_any=p` stops TeX writing outside its job directory; `openin_any=p` refuses
+  dot-files. Note: on current TeX Live, `openin_any=p` does **not** stop reading an
+  absolute path, which is why the escaping and the pre-flight scan are the primary
+  controls. The job runs in a fresh temporary directory with a minimal environment,
+  fixed arguments (no shell), and a timeout.
+- **Payload minimisation (refresh).** The optional advisor refresh sends the model only
+  the company name, its sector/market and stage labels, and prior editorial text after
+  removing every money amount, multiple, lead, fund vehicle, investing entity and any
+  operator-listed term (`--redact`, `refresh_options.redact_terms`, the brand name). The
+  serialized request is then re-checked against every amount and name in the whole
+  export; a match skips that company (`PayloadLeakError`). Tickets, caps, valuations,
+  marks, leads and the investor's identity never leave the machine. Web content returned
+  by the model is treated as untrusted text: it is coerced to the content schema,
+  URLs are limited to `http(s)`, and it is escaped like everything else. Drafts go to
+  `<content>.draft.json`; the approved content file is never written.
+- **Confidential output stays local.** PDFs, `.tex` sources and drafts are written with
+  mode `0600`. They hold tickets, caps and leads and are marked with the configured
+  classification (default `TLP:AMBER`). The scheduled run's email notice lists file
+  names only; attaching PDFs requires `attach_pdf = true`. Keep `out_dir` off shared
+  and synced folders you do not control.
+- **Locked estimates and portfolio content** are private runtime inputs. Their text
+  (events, method, segment verdicts, source labels) is escaped like all other content,
+  source links are limited to `http(s)`, and the estimates file is validated strictly.
+  Estimates are never sent to a model; the advisor refresh payload is unchanged.
+- **Market benchmarks** are a private runtime input like the rest. All their text is
+  escaped, source links must be `http(s)`, and the file is validated strictly. It is
+  never sent to a model or any other service.
+- **No private data in the repository.** Brand, gate parameters, editorial content and
+  the export are runtime inputs; the repository ships only neutral examples
+  (`contrib/digest/`) and synthetic fixtures.
 
 For the consolidated assurance case — the threat model, the trust boundaries, the argument
 that secure design principles are applied, and how common implementation weaknesses are
