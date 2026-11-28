@@ -13,10 +13,11 @@ Entries before `v0.6.0` are reconstructed from the git history and release tags;
 
 Nothing yet.
 
-## [0.8.0] — Unreleased
+## [0.8.0] — 2026-11-28
 
 Minor release: a new, additive `angeltriage digest` command family and the
-`presidio_angellist.digest` subpackage. Nothing in the triage path changes.
+`presidio_angellist.digest` subpackage. The only triage-path change is the
+`--notify` header fix below.
 
 ### Added
 
@@ -117,6 +118,13 @@ Minor release: a new, additive `angeltriage digest` command family and the
   and "incl. estimates" values (previously only the invested amount was counted).
 - `contrib/` added. CONTRIBUTING no longer says the package invokes no subprocesses:
   the digest runs `xelatex`.
+
+### Fixed
+
+- **`--notify` mail now carries `Date` and `Message-ID`.** `build_message` left both
+  to the relay. RFC 5322 requires `Date`, and mail without these headers scores worse
+  with spam filters and some clients. The `Message-ID` domain comes from the sender
+  address, so the local hostname no longer leaks into outgoing headers.
 
 ## [0.7.3] — 2026-07-30
 
@@ -282,7 +290,8 @@ Security-hardening release.
 
 - Initial scaffold: hardened HTTP session, project layout, CI.
 
-[Unreleased]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.3...HEAD
+[Unreleased]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.0...v0.7.1

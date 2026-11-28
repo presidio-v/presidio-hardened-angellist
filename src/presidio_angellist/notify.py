@@ -25,6 +25,7 @@ import os
 import smtplib
 from dataclasses import dataclass, field
 from email.message import EmailMessage
+from email.utils import formatdate, make_msgid, parseaddr
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -151,12 +152,32 @@ def _format_body(result: TriageResult) -> str:
     return "\n".join(lines)
 
 
+def _msgid_domain(sender: str) -> str | None:
+    """Domain for Message-ID, taken from the sender address.
+
+    Without it, :func:`email.utils.make_msgid` falls back to the local hostname,
+    which leaks the machine name into outgoing headers.
+    """
+    addr = parseaddr(sender)[1]
+    _, at, domain = addr.rpartition("@")
+    if not at or not domain:
+        return None
+    return domain
+
+
 def build_message(config: NotifyConfig, result: TriageResult) -> EmailMessage:
-    """Construct the notification email for one triaged deal."""
+    """Construct the notification email for one triaged deal.
+
+    Sets ``Date`` and ``Message-ID`` itself (RFC 5322 requires the former and
+    recommends the latter) instead of relying on the relay to add them; mail
+    lacking them scores worse with spam filters and some clients.
+    """
     msg = EmailMessage()
     msg["From"] = config.sender
     msg["To"] = ", ".join(config.recipients)
     msg["Subject"] = _format_subject(result)
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain=_msgid_domain(config.sender))
     msg.set_content(_format_body(result))
     return msg
 
