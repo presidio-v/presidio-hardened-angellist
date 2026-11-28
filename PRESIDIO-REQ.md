@@ -115,7 +115,9 @@ security defaults with no changes to their calling code.
 | **0.5.2** | Better company/one-liner extraction (body cues); growth-stage out-of-scope detection |
 | **0.6.0** | Security-hardening release: SSRF guard, sink-enforced log redaction, LLM prompt-injection defense, restored retry/backoff, plaintext-IMAP refusal, CVE-floored deps + `pip-audit` in CI |
 | **0.7.0** | Local/self-hosted LLM backend (OpenAI-compatible), SMTP deal notifications (`--notify`), exactly-once polling via a persisted `processed_messages` table |
-| **0.8.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), queue export/digest |
+| **0.7.3** | Security release: SSRF guard on every redirect hop, bounded reads, owner-only store |
+| **0.8.0** | Quarterly portfolio digest (`angeltriage digest`): vintage + aggregate PDFs, gate retro-check, advisor refresh with payload minimisation, scheduled runs |
+| **0.9.0** _(planned)_ | Pluggable enrichment providers (Crunchbase/Harmonic), deal-queue export |
 | _superseded_ | (pre-pivot 0.2/0.3: `AsyncAngelListClient`, cert pinning, Pydantic models, pagination — dropped with the API client) |
 
 ---
@@ -512,6 +514,89 @@ fell back to deterministic/template output.
   returns reasoning-only/empty content, with a message pointing at the fix.
 - Tests for extra-body merge, empty-content handling, and `_parse_extra_body`.
 - Version → 0.7.1.
+
+### v0.8.0 — Quarterly portfolio digest (2026-11-24)
+
+Driven by a concrete need: a quarterly review of the investor's **own** AngelList
+positions — what each vintage is doing, and whether the written LP decision gate would
+have improved past results — rendered as a branded, confidential PDF and refreshed on a
+weekly schedule. A private stdlib prototype proved the layout; 0.8.0 ports and
+generalises it.
+
+**Scope decisions:**
+
+- **Generic package, private inputs.** The repository is public. Branding, gate
+  parameters, editorial content and the export are runtime files; the package ships only
+  neutral examples (`contrib/digest/`) and synthetic fixtures. Gate wording comes from
+  content (`thesis.gate_checks`) or is derived from the gate config's own numbers; no
+  investor parameter is hard-coded.
+- **Stdlib core, external TeX.** CSV parsing, metrics and LaTeX generation are stdlib only.
+  The PDF needs `xelatex` (TeX Live / MacTeX); there is no new Python dependency. TOML
+  config uses `tomllib` (3.11+); JSON works everywhere.
+- **Two modes.** *Vintage* (one year, per-company cards) and *aggregate* (a band of years,
+  portfolio metrics and an aggregated gate retro). One PDF per vintage or band per run.
+- **Retro-check only what the export can answer.** Stage, sector, cap (pre-money = pre +
+  round), top-lead substitute, per-lead limit per calendar year in date order. Checks that
+  need the invite (lead record, conviction, claims) are not scored. Unknown cap = no.
+- **Metrics are defined, not inferred.** TVPI is shown twice (locked at cost; marked
+  only), DPI over all capital; definitions are printed in the PDF's Method section.
+- **LLM refresh is optional, drafts only, and minimised.** Anthropic Messages API with
+  the server-side web search tool; default model the most capable current one
+  (`claude-fable-5-2`), configurable. The request may contain only company name, sector
+  and stage labels, and scrubbed prior editorial text; this is enforced by an allowlist,
+  a scrubber, and a fail-closed re-check against every amount and name in the export,
+  and tested. Output goes to `*.draft.json`; promotion to approved content is manual.
+- **Locked positions get an explicit, labelled estimate, not a silent mark.** AngelList
+  shows no value for locked positions, which hides most of a young vintage. An optional
+  operator file supplies advisor estimates with evidence, range and confidence; the PDF
+  shows TVPI with and without them, flags positions left at cost, and prints the file's
+  method with a statement that these are estimates, not marks. Net value deducts carry on
+  the gain only. Invalid estimates fail closed; unknown names warn.
+- **One comparison across segments.** The Portfolio Digest puts each requested vintage
+  and band side by side with a de-duplicated total, so the run answers "which segment
+  carries the portfolio, and did the gate's rejects underperform everywhere?" in one page.
+  Segments keep the label the operator asked for.
+- **Market context, cited and caveated.** An optional operator file of published
+  benchmarks puts the book next to the venture market: returns by vintage against the
+  fund quartile band, regional, sector and stage mix against market shares, entry prices
+  against stage medians, and graduation rates. Every number from the file cites a source
+  id and the PDF lists the sources; a caveat states that fund-level net benchmarks are
+  not like-for-like with a deal-by-deal angel book. Periods are matched to the requested
+  segment labels by the most overlapping years. Invalid figures fail closed.
+- **Scheduled, quiet by default.** `digest run` reads one private config; refresh and
+  notification are off unless enabled; a notice lists file names and never attaches the
+  PDF unless `attach_pdf = true`. A launchd template (weekly, Saturday morning) uses
+  placeholders only.
+
+**Security requirements delivered:**
+
+- LaTeX escaping of every external string, including `\ { } $ & # ^ _ ~ % [ ] < > |` and
+  control characters; `\href` targets restricted to `http(s)` and percent-encoded
+- Pre-flight scan refusing documents with file/shell/catcode primitives (fail closed)
+- `xelatex -no-shell-escape`, `shell_escape=f`, `openout_any=p`, `openin_any=p`, minimal
+  environment, timeout, temporary job directory; verified that `openin_any=p` does not
+  block absolute reads on current TeX Live, so it is documented as a secondary control
+- Injection tests (`\input{/etc/passwd}`, `\write18{…}`, `^^5c`, `\catcode`, `\csname`)
+  over CSV, content and brand inputs, and real-`xelatex` tests when TeX is installed
+- Payload-minimisation test: payloads built from the fixture export contain none of its
+  amounts, leads, fund vehicles or the investing entity
+- Owner-only (`0600`) PDFs, `.tex` and drafts
+
+**Delivered:**
+- `presidio_angellist/digest/` (`csvload`, `gate`, `metrics`, `latex`, `render`, `build`,
+  `config`, `refresh`, `runner`, `cli`); `angeltriage digest build|refresh|run`
+- `notify.send_plain` for the run notice; `contrib/digest/*.example.*`,
+  `contrib/launchd/com.example.angeltriage-digest.plist`
+- Locked-value estimates (`digest/estimates.py`, `--locked-estimates`): strict schema,
+  net-of-carry valuation, estimate tiles, tables, charts and card lines; estimates never
+  leave the machine
+- Portfolio Digest (`--portfolio`): every requested segment compared plus a total, with
+  segments named by the requested label
+- VC market comparison (`digest/market.py`, `digest/market_render.py`, `--market`):
+  Market Comparison PDF with per-chart source citations; market median on the
+  Portfolio Digest's J-curve
+- Tests extended (495 total; real-TeX tests skip without `xelatex`); ruff clean;
+  version → 0.8.0
 
 ## SDLC
 

@@ -1,0 +1,631 @@
+{
+ "as_of": "2026-11-01",
+ "sources": [
+  {
+   "id": "EX-FUNDS",
+   "label": "Example Fund Benchmarks (invented)",
+   "url": "https://example.org/fund-benchmarks",
+   "period": "2017-2026"
+  },
+  {
+   "id": "EX-ROUNDS",
+   "label": "Example Round Tracker (invented)",
+   "url": "https://example.org/rounds",
+   "period": "2017-2026"
+  },
+  {
+   "id": "EX-GRAD",
+   "label": "Example Graduation Study (invented)",
+   "url": "https://example.org/graduation",
+   "period": "2018-2024"
+  },
+  {
+   "id": "EX-SECTORS",
+   "label": "Example Market Report (invented)",
+   "url": "https://example.org/sectors",
+   "period": "2017-2026"
+  }
+ ],
+ "vintage_benchmarks": {
+  "basis": "invented pooled fund TVPI quartiles, net of fees",
+  "rows": [
+   {
+    "vintage": 2017,
+    "tvpi_p25": 1.2,
+    "tvpi_median": 1.9,
+    "tvpi_p75": 3.0,
+    "dpi_median": 1.1,
+    "source": "EX-FUNDS"
+   },
+   {
+    "vintage": 2018,
+    "tvpi_p25": 1.1,
+    "tvpi_median": 1.7,
+    "tvpi_p75": 2.6,
+    "dpi_median": 0.8,
+    "source": "EX-FUNDS"
+   },
+   {
+    "vintage": 2019,
+    "tvpi_p25": 1.0,
+    "tvpi_median": 1.5,
+    "tvpi_p75": 2.3,
+    "dpi_median": 0.5,
+    "source": "EX-FUNDS"
+   },
+   {
+    "vintage": 2020,
+    "tvpi_p25": 1.0,
+    "tvpi_median": 1.4,
+    "tvpi_p75": 2.1,
+    "dpi_median": 0.3,
+    "source": "EX-FUNDS"
+   },
+   {
+    "vintage": 2021,
+    "tvpi_p25": 0.8,
+    "tvpi_median": 1.1,
+    "tvpi_p75": 1.5,
+    "dpi_median": 0.1,
+    "source": "EX-FUNDS"
+   },
+   {
+    "vintage": 2022,
+    "tvpi_p25": 0.8,
+    "tvpi_median": 1.0,
+    "tvpi_p75": 1.3,
+    "dpi_median": 0.05,
+    "source": "EX-FUNDS"
+   },
+   {
+    "vintage": 2023,
+    "tvpi_p25": 0.9,
+    "tvpi_median": 1.0,
+    "tvpi_p75": 1.2,
+    "dpi_median": null,
+    "source": "EX-FUNDS"
+   },
+   {
+    "vintage": 2024,
+    "tvpi_p25": 0.9,
+    "tvpi_median": 1.0,
+    "tvpi_p75": 1.1,
+    "dpi_median": null,
+    "source": "EX-FUNDS"
+   },
+   {
+    "vintage": 2025,
+    "tvpi_p25": 0.95,
+    "tvpi_median": 1.0,
+    "tvpi_p75": 1.05,
+    "dpi_median": null,
+    "source": "EX-FUNDS"
+   },
+   {
+    "vintage": 2026,
+    "tvpi_p25": 1.0,
+    "tvpi_median": 1.0,
+    "tvpi_p75": 1.0,
+    "dpi_median": null,
+    "source": "EX-FUNDS"
+   }
+  ]
+ },
+ "stage_benchmarks": [
+  {
+   "stage": "pre-seed",
+   "year": 2017,
+   "region": "global",
+   "median_round_usd": 1000000,
+   "median_post_money_usd": 6000000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2017,
+   "region": "global",
+   "median_round_usd": 2500000,
+   "median_post_money_usd": 12000000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "series a",
+   "year": 2017,
+   "region": "global",
+   "median_round_usd": 10000000,
+   "median_post_money_usd": 45000000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2017,
+   "region": "US",
+   "median_round_usd": 3000000,
+   "median_post_money_usd": 14000000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "pre-seed",
+   "year": 2018,
+   "region": "global",
+   "median_round_usd": 1080000,
+   "median_post_money_usd": 6480000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2018,
+   "region": "global",
+   "median_round_usd": 2700000,
+   "median_post_money_usd": 12960000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "series a",
+   "year": 2018,
+   "region": "global",
+   "median_round_usd": 10800000,
+   "median_post_money_usd": 48600000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2018,
+   "region": "US",
+   "median_round_usd": 3240000,
+   "median_post_money_usd": 15120000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "pre-seed",
+   "year": 2019,
+   "region": "global",
+   "median_round_usd": 1160000,
+   "median_post_money_usd": 6960000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2019,
+   "region": "global",
+   "median_round_usd": 2900000,
+   "median_post_money_usd": 13920000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "series a",
+   "year": 2019,
+   "region": "global",
+   "median_round_usd": 11600000,
+   "median_post_money_usd": 52200000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2019,
+   "region": "US",
+   "median_round_usd": 3480000,
+   "median_post_money_usd": 16240000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "pre-seed",
+   "year": 2020,
+   "region": "global",
+   "median_round_usd": 1240000,
+   "median_post_money_usd": 7440000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2020,
+   "region": "global",
+   "median_round_usd": 3100000,
+   "median_post_money_usd": 14880000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "series a",
+   "year": 2020,
+   "region": "global",
+   "median_round_usd": 12400000,
+   "median_post_money_usd": 55800000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2020,
+   "region": "US",
+   "median_round_usd": 3720000,
+   "median_post_money_usd": 17360000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "pre-seed",
+   "year": 2026,
+   "region": "global",
+   "median_round_usd": 1720000,
+   "median_post_money_usd": 10320000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2026,
+   "region": "global",
+   "median_round_usd": 4300000,
+   "median_post_money_usd": 20640000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "series a",
+   "year": 2026,
+   "region": "global",
+   "median_round_usd": 17200000,
+   "median_post_money_usd": 77400000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2026,
+   "region": "US",
+   "median_round_usd": 5160000,
+   "median_post_money_usd": 24080000,
+   "source": "EX-ROUNDS"
+  }
+ ],
+ "graduation": [
+  {
+   "cohort": "2018-2020 seed",
+   "from": "seed",
+   "to": "series a",
+   "window_months": 24,
+   "rate": 0.3,
+   "source": "EX-GRAD"
+  },
+  {
+   "cohort": "2021-2023 seed",
+   "from": "seed",
+   "to": "series a",
+   "window_months": 24,
+   "rate": 0.18,
+   "source": "EX-GRAD"
+  }
+ ],
+ "sector_market": [
+  {
+   "bucket": "security_software",
+   "period": "2017-2020",
+   "scope": "global",
+   "share_dollars": 0.08,
+   "share_deals": 0.072,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "energy",
+   "period": "2017-2020",
+   "scope": "global",
+   "share_dollars": 0.06,
+   "share_deals": 0.054,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "aerospace",
+   "period": "2017-2020",
+   "scope": "global",
+   "share_dollars": 0.03,
+   "share_deals": 0.027,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "crypto",
+   "period": "2017-2020",
+   "scope": "global",
+   "share_dollars": 0.05,
+   "share_deals": 0.045,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "real_estate",
+   "period": "2017-2020",
+   "scope": "global",
+   "share_dollars": 0.04,
+   "share_deals": 0.036,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "ai",
+   "period": "2017-2020",
+   "scope": "global",
+   "share_dollars": 0.1,
+   "share_deals": 0.09,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "security_software",
+   "period": "2021-2025",
+   "scope": "global",
+   "share_dollars": 0.09,
+   "share_deals": 0.081,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "energy",
+   "period": "2021-2025",
+   "scope": "global",
+   "share_dollars": 0.08,
+   "share_deals": 0.072,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "aerospace",
+   "period": "2021-2025",
+   "scope": "global",
+   "share_dollars": 0.04,
+   "share_deals": 0.036,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "crypto",
+   "period": "2021-2025",
+   "scope": "global",
+   "share_dollars": 0.06,
+   "share_deals": 0.054,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "real_estate",
+   "period": "2021-2025",
+   "scope": "global",
+   "share_dollars": 0.03,
+   "share_deals": 0.027,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "ai",
+   "period": "2021-2025",
+   "scope": "global",
+   "share_dollars": 0.3,
+   "share_deals": 0.27,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "security_software",
+   "period": "2026",
+   "scope": "global",
+   "share_dollars": 0.08,
+   "share_deals": 0.072,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "energy",
+   "period": "2026",
+   "scope": "global",
+   "share_dollars": 0.07,
+   "share_deals": 0.063,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "aerospace",
+   "period": "2026",
+   "scope": "global",
+   "share_dollars": 0.06,
+   "share_deals": 0.054,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "crypto",
+   "period": "2026",
+   "scope": "global",
+   "share_dollars": 0.02,
+   "share_deals": 0.018,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "real_estate",
+   "period": "2026",
+   "scope": "global",
+   "share_dollars": 0.02,
+   "share_deals": 0.018,
+   "source": "EX-SECTORS"
+  },
+  {
+   "bucket": "ai",
+   "period": "2026",
+   "scope": "global",
+   "share_dollars": 0.45,
+   "share_deals": 0.405,
+   "source": "EX-SECTORS"
+  }
+ ],
+ "geo_market": [
+  {
+   "region": "US",
+   "period": "2017-2020",
+   "share_dollars": 0.55,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "Europe",
+   "period": "2017-2020",
+   "share_dollars": 0.2,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "Asia",
+   "period": "2017-2020",
+   "share_dollars": 0.2,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "Africa",
+   "period": "2017-2020",
+   "share_dollars": 0.01,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "US",
+   "period": "2021-2025",
+   "share_dollars": 0.6,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "Europe",
+   "period": "2021-2025",
+   "share_dollars": 0.2,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "Asia",
+   "period": "2021-2025",
+   "share_dollars": 0.15,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "Africa",
+   "period": "2021-2025",
+   "share_dollars": 0.01,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "US",
+   "period": "2026",
+   "share_dollars": 0.62,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "Europe",
+   "period": "2026",
+   "share_dollars": 0.18,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "Asia",
+   "period": "2026",
+   "share_dollars": 0.14,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  },
+  {
+   "region": "Africa",
+   "period": "2026",
+   "share_dollars": 0.01,
+   "share_deals": null,
+   "source": "EX-SECTORS"
+  }
+ ],
+ "company_geo": {
+  "Acme Robotics": {
+   "country": "US",
+   "region": "US",
+   "city": "Austin",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Blue Harbor Energy": {
+   "country": "DE",
+   "region": "Europe",
+   "city": "Hamburg",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Cinder Loop": {
+   "country": "US",
+   "region": "US",
+   "city": "",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Delta Mesh Security": {
+   "country": "GB",
+   "region": "Europe",
+   "city": "Leeds",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Ember Grid": {
+   "country": "KE",
+   "region": "Africa",
+   "city": "Nairobi",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Granite Ledger": {
+   "country": "SG",
+   "region": "Asia",
+   "city": "",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Harbor Keys": {
+   "country": "US",
+   "region": "US",
+   "city": "",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Iris Orbit": {
+   "country": "US",
+   "region": "US",
+   "city": "",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Kestrel Nuclear": {
+   "country": "US",
+   "region": "US",
+   "city": "",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Lumen Shield": {
+   "country": "FR",
+   "region": "Europe",
+   "city": "",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Mosaic Freight": {
+   "country": "IN",
+   "region": "Asia",
+   "city": "",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  },
+  "Northwind Defense": {
+   "country": "US",
+   "region": "US",
+   "city": "",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  }
+ },
+ "commentary": {
+  "headline": "The early band beats the invented market median; the newest vintage is too young to compare.",
+  "overall": [
+   "2017 and 2020 sit above the invented p75; 2018 and 2019 sit near the median."
+  ],
+  "geographic": [
+   "About a third of capital sits outside the US, close to the invented market share."
+  ],
+  "sectoral": [
+   "Overweight energy and aerospace, underweight AI."
+  ],
+  "stage": [
+   "Entry prices are near the invented market median for seed."
+  ],
+  "implications": [
+   "Keep entry prices near the stage median; watch AI exposure."
+  ]
+ },
+ "numbers_used": {}
+}

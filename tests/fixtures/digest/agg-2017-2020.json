@@ -1,0 +1,31 @@
+{
+  "band": "2017-2020",
+  "as_of": "2026-11-01",
+  "headline": "One position carries the band; the rest return roughly cost.",
+  "summary": {
+    "paragraphs": [
+      "Acme Robotics accounts for most of the band's value; without it the band is close to 1x.",
+      "The gate would have cut the crypto and real-estate positions, both below cost."
+    ],
+    "lessons_for_gate": ["Price discipline mattered less than sector discipline in this band."],
+    "actions": ["Ask about a secondary window for Acme Robotics."]
+  },
+  "holdings": {
+    "Acme Robotics": {
+      "one_liner": "Warehouse picking robots.",
+      "status": "Ahead",
+      "signals": ["Series C announced (press)."],
+      "forecast": "A secondary window is more likely than an exit within 24 months.",
+      "key_risk": "Concentration: most of the band's value sits in one illiquid position.",
+      "sources": [{"label": "Press release", "url": "https://example.com/acme-series-c"}]
+    },
+    "Granite Ledger": {
+      "one_liner": "Ledger tooling.",
+      "status": "Behind",
+      "signals": ["Team halved (public directories)."],
+      "forecast": "Wind-down likely.",
+      "key_risk": "Runway."
+    }
+  },
+  "numbers_used": {}
+}

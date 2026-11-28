@@ -1,0 +1,25 @@
+{
+  "_comment": "Example advisor estimates for LOCKED positions (`--locked-estimates`). Neutral illustrative values; keep your real file outside the repository. Names must match the export's Company/Fund column.",
+  "as_of": "2026-11-01",
+  "method": "Last priced round or announced transaction where public; otherwise distress signals. Estimated multiple relative to our entry price.",
+  "positions": {
+    "Acme Robotics": {
+      "evidence": "priced_round",
+      "event": "Series A at a higher valuation (press release).",
+      "post_money_usd": 40000000,
+      "est_multiple": 2.0,
+      "range": [1.5, 3.0],
+      "confidence": "medium",
+      "sources": [{"label": "Press release", "url": "https://example.com/acme-series-a"}]
+    },
+    "Example Shutdown Co": {
+      "evidence": "shutdown",
+      "event": "Wind-down notice to shareholders.",
+      "post_money_usd": null,
+      "est_multiple": 0.0,
+      "range": [0.0, 0.0],
+      "confidence": "high",
+      "sources": []
+    }
+  }
+}

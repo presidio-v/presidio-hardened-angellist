@@ -76,8 +76,9 @@ rule sets are `E`, `F`, `W` (pycodestyle/pyflakes), `I` (import sorting), `N` (n
 `UP` (pyupgrade), **`S` (flake8-bandit — security)**, `B` (bugbear), `A` (builtin
 shadowing), `C4` (comprehensions), `SIM` (simplification), and `TCH` (type-checking
 imports). `S101` is ignored so tests can use bare `assert`; `S603`/`S607` are ignored
-project-wide as a legacy of the shared Presidio ruff profile — this package invokes no
-subprocesses at all, so neither rule has anything to suppress here.
+project-wide as a legacy of the shared Presidio ruff profile. The only subprocess the
+package starts is `xelatex` in `digest/build.py`, with a fixed argument list, no shell,
+`-no-shell-escape`, and a binary resolved from configuration or `PATH`.
 
 Do not add a blanket `# noqa` to silence an `S` finding. Either fix it, or narrow it to the
 specific rule with a comment explaining why the pattern is safe.
@@ -122,6 +123,10 @@ security-sensitive modules, then the reviewer bar above applies in full:
   fail closed and must keep doing so.
 - **`store.py`** — SQL construction and the on-disk queue.
 - **`notify.py`** — SMTP credentials and transport security.
+- **`digest/latex.py`, `digest/render.py`, `digest/build.py`** — LaTeX escaping, URL
+  sanitising, the pre-flight primitive scan, and the `xelatex` sandbox flags.
+- **`digest/refresh.py`** — payload minimisation for the advisor refresh. A change that
+  lets an amount, lead, fund or investor name reach the model is a security defect.
 
 - explain the security reasoning in the PR description, not only the mechanics
 - do not weaken a default. New controls are opt-in; relaxations of existing controls need

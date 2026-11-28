@@ -25,9 +25,12 @@ import os
 import smtplib
 from dataclasses import dataclass, field
 from email.message import EmailMessage
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from presidio_angellist.models import TriageResult
 
 _log = logging.getLogger("presidio_angellist")
@@ -187,3 +190,46 @@ def send_notifications(config: NotifyConfig, results: list[TriageResult]) -> int
     except (smtplib.SMTPException, OSError) as exc:
         raise NotifyError(f"failed to send deal notification(s): {exc}") from exc
     return len(results)
+
+
+def _open_smtp(config: NotifyConfig) -> smtplib.SMTP:
+    smtp = (
+        smtplib.SMTP_SSL(config.host, config.port, timeout=30)
+        if config.use_ssl
+        else smtplib.SMTP(config.host, config.port, timeout=30)
+    )
+    return smtp
+
+
+def send_plain(
+    config: NotifyConfig,
+    subject: str,
+    body: str,
+    attachments: Sequence[Path] = (),
+) -> None:
+    """Send one plain-text message, optionally with PDF attachments.
+
+    Used by the digest run. Attachments are only passed when the operator has
+    explicitly enabled them; the default digest notice carries file names only.
+    Raises :class:`NotifyError` on any failure.
+    """
+    msg = EmailMessage()
+    msg["From"] = config.sender
+    msg["To"] = ", ".join(config.recipients)
+    msg["Subject"] = subject.replace("\r", " ").replace("\n", " ")
+    msg.set_content(body)
+    try:
+        for path in attachments:
+            p = Path(path)
+            msg.add_attachment(
+                p.read_bytes(), maintype="application", subtype="pdf", filename=p.name
+            )
+        with _open_smtp(config) as smtp:
+            if not config.use_ssl:
+                smtp.starttls()
+            if config.user and config.password:
+                smtp.login(config.user, config.password)
+            smtp.send_message(msg)
+    except (smtplib.SMTPException, OSError) as exc:
+        raise NotifyError(f"failed to send notification: {exc}") from exc
+    _log.info("presidio_angellist: digest notice sent to %d recipient(s)", len(config.recipients))

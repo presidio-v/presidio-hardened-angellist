@@ -1,0 +1,19 @@
+{
+  "quarter": "2026-Q4",
+  "as_of": "2026-11-01",
+  "headline": "The early band carries the portfolio; the newest vintage is too young to judge.",
+  "segments": {
+    "2026": "Too early: mostly locked, one estimate above cost.",
+    "2015-2020": "One outlier carries the band; sector discipline would have helped.",
+    "Total": "Returns depend on one position."
+  },
+  "summary": {
+    "paragraphs": [
+      "Across both segments, most value sits in a single early position.",
+      "Locked estimates move the newest vintage slightly above cost, on low-to-medium confidence."
+    ],
+    "lessons_for_gate": ["Avoid-list positions underperformed in every segment."],
+    "actions": ["Re-check the low-confidence estimates next quarter."]
+  },
+  "numbers_used": {}
+}
