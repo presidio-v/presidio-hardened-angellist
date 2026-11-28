@@ -250,3 +250,11 @@ def test_position_year_property():
     p = load_positions(CSV)[0]
     assert p.year == p.invest_date.year == 2017
     assert isinstance(p.invest_date, date)
+
+
+def test_nul_bytes_in_export_are_dropped():
+    from presidio_angellist.digest.csvload import _rows_from_text
+
+    text = 'Disclaimer\nCompany/Fund,Invested\nAcme\x00 Robotics,"$1,000"\n'
+    rows = _rows_from_text(text)
+    assert rows[0]["Company/Fund"] == "Acme Robotics"

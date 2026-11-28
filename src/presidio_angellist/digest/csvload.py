@@ -122,7 +122,8 @@ class Position:
 
 
 def _rows_from_text(text: str) -> list[dict[str, str]]:
-    lines = text.splitlines()
+    # NUL bytes are never valid in an export; Python 3.10's csv module rejects them outright.
+    lines = text.replace("\x00", "").splitlines()
     start = next((i for i, ln in enumerate(lines) if ln.startswith(HEADER_PREFIX)), None)
     if start is None:
         raise DigestDataError(f"no header row starting with '{HEADER_PREFIX}' found")
