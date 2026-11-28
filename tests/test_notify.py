@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from email.utils import parsedate_to_datetime
+
 import pytest
 
 from presidio_angellist.models import Deal, DimensionScore, Scorecard, TriageResult
@@ -11,6 +13,7 @@ from presidio_angellist.notify import (
     build_message,
     notify_config_from_env,
     send_notifications,
+    send_plain,
 )
 
 _SMTP_ENV = {
@@ -126,6 +129,25 @@ class TestBuildMessage:
         assert result.deal.website is not None
         assert result.deal.website in body
 
+    def test_sets_date_and_message_id(self) -> None:
+        cfg = NotifyConfig(
+            host="h", port=465, sender="Deals <from@example.org>", recipients=["a@x"]
+        )
+        msg = build_message(cfg, _result())
+        assert parsedate_to_datetime(msg["Date"]).tzinfo is not None
+        assert msg["Message-ID"].startswith("<")
+        assert msg["Message-ID"].endswith("@example.org>")
+
+    def test_message_ids_are_unique_per_message(self) -> None:
+        cfg = NotifyConfig(host="h", port=465, sender="from@example.org", recipients=["a@x"])
+        ids = {build_message(cfg, _result())["Message-ID"] for _ in range(5)}
+        assert len(ids) == 5
+
+    def test_message_id_without_sender_domain_still_valid(self) -> None:
+        cfg = NotifyConfig(host="h", port=465, sender="localonly", recipients=["a@x"])
+        msg = build_message(cfg, _result())
+        assert msg["Message-ID"].startswith("<") and msg["Message-ID"].endswith(">")
+
 
 class TestSendNotifications:
     def test_sends_each_via_ssl(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -184,3 +206,36 @@ class TestNotifyConfigSecrecy:
         )
         assert "hunter2" not in repr(cfg)
         assert cfg.password == "hunter2"  # noqa: S105 - fixture value
+
+
+class TestSendPlain:
+    """The digest run's notice: plain text, attachments only when passed explicitly."""
+
+    def _cfg(self, **kw: object) -> NotifyConfig:
+        base = {"host": "h", "port": 465, "sender": "from@x", "recipients": ["a@x"]}
+        base.update(kw)
+        return NotifyConfig(**base)  # type: ignore[arg-type]
+
+    def test_plain_notice_without_attachment(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _FakeSMTP.instances.clear()
+        monkeypatch.setattr("presidio_angellist.notify.smtplib.SMTP_SSL", _FakeSMTP)
+        send_plain(self._cfg(user="u", password="p"), "Subj\r\nBcc: x@y", "body")  # noqa: S106
+        msg = _FakeSMTP.instances[0].sent[0]
+        assert "\n" not in msg["Subject"] and "Bcc" not in msg
+        assert not list(msg.iter_attachments())
+        assert _FakeSMTP.instances[0].logged_in == ("u", "p")
+
+    def test_attachment_and_starttls(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        _FakeSMTP.instances.clear()
+        monkeypatch.setattr("presidio_angellist.notify.smtplib.SMTP", _FakeSMTP)
+        pdf = tmp_path / "d.pdf"
+        pdf.write_bytes(b"%PDF-1.4")
+        send_plain(self._cfg(port=587, use_ssl=False), "s", "b", attachments=[pdf])
+        smtp = _FakeSMTP.instances[0]
+        assert smtp.started_tls is True
+        (att,) = list(smtp.sent[0].iter_attachments())
+        assert att.get_filename() == "d.pdf"
+
+    def test_failure_raises(self, monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+        with pytest.raises(NotifyError):
+            send_plain(self._cfg(), "s", "b", attachments=[tmp_path / "missing.pdf"])

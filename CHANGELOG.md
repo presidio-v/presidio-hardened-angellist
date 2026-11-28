@@ -13,6 +13,119 @@ Entries before `v0.6.0` are reconstructed from the git history and release tags;
 
 Nothing yet.
 
+## [0.8.0] — 2026-11-28
+
+Minor release: a new, additive `angeltriage digest` command family and the
+`presidio_angellist.digest` subpackage. The only triage-path change is the
+`--notify` header fix below.
+
+### Added
+
+- **Quarterly portfolio digest** (`presidio_angellist.digest`, `angeltriage digest build`).
+  Reads the AngelList investments export (tolerates the disclaimer line, `Locked`
+  values, empty caps, non-USD caps) and builds branded PDFs with an external `xelatex`:
+  a *vintage* digest (one year, per-company cards, entry-cap and per-lead charts,
+  outlook chart, gate retro-check) and an *aggregate* digest (a band of years: TVPI with
+  locked positions at cost and marked-only, DPI, 0x share, concentration, invested vs
+  value by year, multiple distribution, top positions, per-lead and per-thesis-bucket
+  tables, and an aggregated gate retro-check — "would the gate have helped?").
+- **Gate retro-check** driven by an operator gate-config JSON (stage and round size,
+  sector bucket, post-money cap with pre-money counted as pre + round, top-lead
+  substitute, per-lead limit per calendar year in date order). The config is validated
+  strictly and fails closed (`GateConfigError`).
+- **Brand config** (TOML/JSON): name, tagline, logo, colours, font with fallback,
+  classification label (default `TLP:AMBER`), document-id prefix, header text.
+- **Advisor refresh** (`angeltriage digest refresh`, `[llm]` extra): drafts per-company
+  editorial content with the Anthropic Messages API and the server-side web search tool
+  (default model `claude-fable-5-2`, configurable; server-side refusal fallback enabled
+  where supported). Output goes to `<content>.draft.json`; approved content is never
+  written.
+- **Scheduled run** (`angeltriage digest run --config digest.toml`): newest export,
+  current quarter, optional refresh, one PDF per vintage and band, optional email notice
+  via `notify.send_plain` (file names only unless `attach_pdf = true`). Neutral examples
+  in `contrib/digest/` and a weekly launchd template in `contrib/launchd/`.
+- **Locked-value estimates** (`--locked-estimates FILE`, `locked_estimates` in the run
+  config): advisor estimates for positions whose AngelList value is locked (evidence,
+  event, post-money, estimated multiple, range, confidence, sources). Gross value is
+  invested × m; net value deducts carry on the gain (the export's `Carry`, 20% where
+  empty). Vintage and aggregate digests gain a "TVPI incl. locked estimates" tile (net,
+  gross in the label), a "Locked positions: estimated value" table and cost-vs-estimate
+  chart, a method note, and an "Est. locked value" line on vintage cards. Positions
+  without an estimate stay at cost and are flagged. The file is validated strictly
+  (unknown evidence, negative multiple, `low > high` are errors); a name not in the
+  export warns. Example: `contrib/digest/locked-estimates.example.json`.
+- **Portfolio Digest** (`--portfolio`, `portfolio = true`): one more PDF,
+  `<prefix>-Portfolio-Digest-<quarter>.pdf`, comparing every vintage and band requested
+  in the run plus a total (each position once): KPI tiles, a comparison table (positions,
+  invested, realized, unrealized, TVPI marked / at cost / incl. estimates, DPI, 0x share,
+  top-1 share, gate pass/borderline/fail, segment verdict), TVPI per segment, capital by
+  thesis bucket per segment, TVPI by vintage year (J-curve), DPI per segment, gate
+  verdicts per segment with each group's TVPI, top value drivers and biggest locked
+  estimates. Editorial text comes from `portfolio.json` in the content directory.
+  Segments carry the requested label (a band `2015-2020` stays `2015-2020` even if its
+  first position is in 2017).
+- **VC market comparison** (`--market FILE`, `market = "…"` in the run config): reads an
+  operator benchmark file (sources, vintage TVPI quartiles and median DPI, stage round and
+  post-money medians, graduation rates, sector and regional shares of dollars/deals, a
+  company-location map, commentary) and builds `<prefix>-Market-Comparison-<quarter>.pdf`
+  for the run's segments plus a total: KPI tiles (TVPI at cost against the market median
+  for the vintage mix, capital outside the US, on-thesis share against the market,
+  entry post-money against the stage/year median), TVPI and DPI by invest year against
+  the market p25–p75 band and median, capital by region and by thesis bucket per segment
+  against the market, over/under-weight bars, AI shown separately, capital by entry stage,
+  an entry-price strip chart, graduation rates (with the portfolio's own share when locked
+  estimates are given), commentary, a numbered sources list, glossary and method. Every
+  market number cites its source id. A segment is compared with the market period that
+  shares the most years with it. The file is validated strictly (unknown source id, share
+  or rate outside 0–1, quartiles out of order, unknown stage/scope, bad period); a
+  `company_geo` name not in the export warns. The Portfolio Digest's J-curve chart also
+  draws the market median TVPI when `--market` is given. Example:
+  `contrib/digest/market.example.json`.
+- Glossary terms for quartiles (p25/p75), median, vintage, graduation rate and
+  over/under-weight.
+- Environment variables `ANGELTRIAGE_XELATEX` and `ANGELTRIAGE_DIGEST_MODEL`.
+
+### Security
+
+- All CSV, content, gate-config and brand text is LaTeX-escaped (including `\ { } $ & #
+  ^ _ ~ % [ ] < > |` and control characters); `\href` targets are restricted to
+  `http(s)` and percent-encoded. A pre-flight scan refuses to compile any document
+  containing a file-, shell- or catcode-level primitive (`\input`, `\write`, `\openin`,
+  `\catcode`, `\csname`, `^^`, …). `xelatex` runs with `-no-shell-escape`,
+  `shell_escape=f`, `openout_any=p`, `openin_any=p`, a minimal environment and a
+  timeout, in a throwaway directory. Injection tests cover company names such as
+  `\input{/etc/passwd}` and `\write18{…}`.
+- **Payload minimisation** for the refresh: a request carries only the company name,
+  sector and stage labels, and prior editorial text scrubbed of amounts, multiples,
+  leads, fund vehicles and the investing entity; it is re-checked against every amount
+  and name in the export before it is sent, and a hit skips that company.
+- Digest PDFs, `.tex` sources and drafts are written owner-only (`0600`).
+- Locked-estimate and portfolio text (events, method, segment verdicts, source labels)
+  goes through the same escaping and pre-flight scan; estimate source links are limited to
+  `http(s)`. Estimates are local inputs only and are never sent to a model.
+- Market-file text (labels, commentary, regions, buckets, basis, source labels) is escaped
+  like all other content; source links are limited to `http(s)`. The market file is a
+  local input and is never sent anywhere.
+
+### Changed
+
+- Every digest ends with a **Glossary** of the venture terms it actually uses (TVPI, DPI,
+  LP, SPV, SAFE, cap, pre/post-money, carry, mark, locked, 0x, P(up-round), pro-rata),
+  including terms used inside other definitions. Company names and sectors are never listed.
+- Digest tables break across pages (`xltabular`) with a repeated header, so long tables no
+  longer strand their section heading at the foot of a page.
+- A locked position that has already paid out cash keeps that cash in the "locked at cost"
+  and "incl. estimates" values (previously only the invested amount was counted).
+- `contrib/` added. CONTRIBUTING no longer says the package invokes no subprocesses:
+  the digest runs `xelatex`.
+
+### Fixed
+
+- **`--notify` mail now carries `Date` and `Message-ID`.** `build_message` left both
+  to the relay. RFC 5322 requires `Date`, and mail without these headers scores worse
+  with spam filters and some clients. The `Message-ID` domain comes from the sender
+  address, so the local hostname no longer leaks into outgoing headers.
+
 ## [0.7.3] — 2026-07-30
 
 **Security release.** Fixes a redirect-based SSRF bypass found by an independent
@@ -177,7 +290,8 @@ Security-hardening release.
 
 - Initial scaffold: hardened HTTP session, project layout, CI.
 
-[Unreleased]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.3...HEAD
+[Unreleased]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.3...v0.8.0
 [0.7.3]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.2...v0.7.3
 [0.7.2]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.1...v0.7.2
 [0.7.1]: https://github.com/presidio-v/presidio-hardened-angellist/compare/v0.7.0...v0.7.1

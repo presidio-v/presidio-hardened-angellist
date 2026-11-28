@@ -1,0 +1,114 @@
+{
+ "_comment": "Example VC market benchmark file for `--market`. Invented, illustrative values and sources; keep your real file outside the repository. Every row cites a source id from `sources`.",
+ "as_of": "2026-11-01",
+ "sources": [
+  {
+   "id": "EX-FUNDS",
+   "label": "Example Fund Benchmarks (invented)",
+   "url": "https://example.org/fund-benchmarks",
+   "period": "2017-2026"
+  },
+  {
+   "id": "EX-ROUNDS",
+   "label": "Example Round Tracker (invented)",
+   "url": "https://example.org/rounds",
+   "period": "2017-2026"
+  }
+ ],
+ "vintage_benchmarks": {
+  "basis": "invented pooled fund TVPI quartiles, net of fees",
+  "rows": [
+   {
+    "vintage": 2017,
+    "tvpi_p25": 1.2,
+    "tvpi_median": 1.9,
+    "tvpi_p75": 3.0,
+    "dpi_median": 1.1,
+    "source": "EX-FUNDS"
+   },
+   {
+    "vintage": 2018,
+    "tvpi_p25": 1.1,
+    "tvpi_median": 1.7,
+    "tvpi_p75": 2.6,
+    "dpi_median": 0.8,
+    "source": "EX-FUNDS"
+   }
+  ]
+ },
+ "stage_benchmarks": [
+  {
+   "stage": "pre-seed",
+   "year": 2017,
+   "region": "global",
+   "median_round_usd": 1000000,
+   "median_post_money_usd": 6000000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "seed",
+   "year": 2017,
+   "region": "global",
+   "median_round_usd": 2500000,
+   "median_post_money_usd": 12000000,
+   "source": "EX-ROUNDS"
+  },
+  {
+   "stage": "series a",
+   "year": 2017,
+   "region": "global",
+   "median_round_usd": 10000000,
+   "median_post_money_usd": 45000000,
+   "source": "EX-ROUNDS"
+  }
+ ],
+ "graduation": [
+  {
+   "cohort": "2018-2020 seed",
+   "from": "seed",
+   "to": "series a",
+   "window_months": 24,
+   "rate": 0.3,
+   "source": "EX-ROUNDS"
+  }
+ ],
+ "sector_market": [
+  {
+   "bucket": "security_software",
+   "period": "2017-2020",
+   "scope": "global",
+   "share_dollars": 0.08,
+   "share_deals": 0.072,
+   "source": "EX-ROUNDS"
+  }
+ ],
+ "geo_market": [
+  {
+   "region": "US",
+   "period": "2017-2020",
+   "share_dollars": 0.55,
+   "share_deals": null,
+   "source": "EX-ROUNDS"
+  }
+ ],
+ "company_geo": {
+  "Acme Robotics": {
+   "country": "US",
+   "region": "US",
+   "city": "Austin",
+   "confidence": "medium",
+   "basis": "company website (invented)"
+  }
+ },
+ "commentary": {
+  "headline": "One line for the title page.",
+  "overall": [
+   "..."
+  ],
+  "geographic": [],
+  "sectoral": [],
+  "stage": [],
+  "implications": []
+ },
+ "numbers_used": {}
+}
