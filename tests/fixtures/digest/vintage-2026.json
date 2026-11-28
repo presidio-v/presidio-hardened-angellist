@@ -1,0 +1,49 @@
+{
+  "quarter": "2026-Q4",
+  "as_of": "2026-11-01",
+  "headline": "Six positions, one with a clear early signal, two that need a question to the lead, none marked up yet.",
+  "thesis": {
+    "statement": "Example Ventures backs pre-seed and seed companies in security software, energy and aerospace, pays early-stage prices, and keeps tickets small.",
+    "pillars": [
+      {"title": "Sector", "text": "Security software, energy and aerospace; crypto and real estate are a hard no."},
+      {"title": "Stage and price", "text": "Pre-seed and seed only, normally at or below the norm cap, never above the ceiling."},
+      {"title": "Lead quality", "text": "The lead has a record in the sector and puts in money of their own."},
+      {"title": "Sizing", "text": "A standard ticket, a per-company maximum, and a per-lead annual limit."}
+    ],
+    "vintage_note": "None of these positions was screened by the written gate; read the retro-check with that in mind."
+  },
+  "summary": {
+    "paragraphs": [
+      "It is too early to speak of performance: five of six positions are locked and the one mark is fee drag.",
+      "Kestrel Nuclear is ahead on public signals; Mosaic Freight and Orchid Health show none yet."
+    ],
+    "strongest": ["Kestrel Nuclear: pilot reactor design review passed (company claim).", "Lumen Shield: paying design partners."],
+    "weakest": ["Mosaic Freight: off-thesis and priced above the ceiling.", "Orchid Health: no cap on record."],
+    "actions": ["Ask the lead for Orchid Health's cap and record it.", "Re-check Northwind Defense's procurement pilot before Q1."],
+    "lessons_for_gate": ["Four of six tickets came through one lead: the per-lead limit matters."]
+  },
+  "companies": {
+    "Kestrel Nuclear": {
+      "one_liner": "Compact fission for remote industrial sites.",
+      "status": "Ahead",
+      "signals": ["Design review milestone announced (company claim).", "Second engineering hire from a national lab."],
+      "forecast": "A priced seed extension above our entry is plausible within 18 months.",
+      "key_risk": "Licensing timelines slip by years.",
+      "p_up_round": 0.45,
+      "watch": "Regulator pre-application status.",
+      "sources": [{"label": "Company blog", "url": "https://example.com/kestrel?a=1&b=2#news"}]
+    },
+    "Lumen Shield": {
+      "one_liner": "Identity threat detection for small security teams.",
+      "status": "On track",
+      "signals": ["Three paying design partners (company claim)."],
+      "forecast": "Seed round in 2027 if conversion holds.",
+      "key_risk": "Platform vendors bundle the feature.",
+      "p_up_round": 0.32,
+      "sources": [{"label": "Launch post", "url": "https://example.org/lumen"}]
+    },
+    "Mosaic Freight": {"status": "No signal", "signals": [], "p_up_round": 0.15},
+    "Northwind Defense": {"status": "On track", "signals": ["Procurement pilot announced."], "p_up_round": 0.3},
+    "Orchid Health": {"status": "Behind", "signals": ["Pivot announced."], "p_up_round": 0.1}
+  }
+}
